@@ -159,7 +159,9 @@ export async function deliverContent(env: WorkerEnv, content: ContentRow): Promi
 export async function generateAndDeliver(env: WorkerEnv, date: string, kind: ContentKind, sendEmail = true): Promise<{ content: ContentRow; sent: boolean; messageId?: string }> {
   const content = await generateContent(env, date, kind);
   if (kind === 'english') await ensureEnglishAudio(env, content);
-  if (!sendEmail) return { content, sent: false };
+  if (!sendEmail || !env.STUDY_EMAIL_TO?.trim() || !env.STUDY_EMAIL_FROM?.trim()) {
+    return { content, sent: false };
+  }
   const delivery = await deliverContent(env, content);
   return { content, ...delivery };
 }

@@ -19,7 +19,6 @@ jobs:
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_D1_DATABASE_ID: ${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -27,21 +26,18 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Configure Cloudflare resource IDs
-        if: env.CLOUDFLARE_ACCOUNT_ID != '' && env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_D1_DATABASE_ID != ''
-        run: node scripts/configure-cloudflare-ci.mjs
       - run: npm run worker:types
       - run: npm run check
       - name: Apply D1 migrations
-        if: env.CLOUDFLARE_ACCOUNT_ID != '' && env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_D1_DATABASE_ID != ''
+        if: env.CLOUDFLARE_ACCOUNT_ID != '' && env.CLOUDFLARE_API_TOKEN != ''
         run: node scripts/run-wrangler.mjs d1 migrations apply language-study-log-db --remote --config wrangler.jsonc
       - name: Deploy Worker
-        if: env.CLOUDFLARE_ACCOUNT_ID != '' && env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_D1_DATABASE_ID != ''
+        if: env.CLOUDFLARE_ACCOUNT_ID != '' && env.CLOUDFLARE_API_TOKEN != ''
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy --config dist/server/wrangler.json
       - name: Cloudflare setup notice
-        if: env.CLOUDFLARE_ACCOUNT_ID == '' || env.CLOUDFLARE_API_TOKEN == '' || env.CLOUDFLARE_D1_DATABASE_ID == ''
-        run: echo "Cloudflare deploy skipped. Add CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, and CLOUDFLARE_D1_DATABASE_ID repository secrets."
+        if: env.CLOUDFLARE_ACCOUNT_ID == '' || env.CLOUDFLARE_API_TOKEN == ''
+        run: echo "Cloudflare deploy skipped. Add CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN repository secrets."

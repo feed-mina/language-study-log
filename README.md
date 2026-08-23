@@ -58,7 +58,7 @@ npx wrangler d1 create language-study-log-db
 npx wrangler r2 bucket create language-study-log-assets
 ```
 
-2. 반환된 D1 ID를 Cloudflare 배포용 GitHub secret `CLOUDFLARE_D1_DATABASE_ID`에 등록합니다.
+2. 반환된 D1 ID를 `wrangler.jsonc`의 `database_id`에 기록합니다.
 3. 발신 도메인을 Cloudflare Email Service에 등록한 뒤 Worker 비밀 값을 저장합니다.
 
 ```bash
@@ -71,9 +71,10 @@ npx wrangler secret put STUDY_EMAIL_FROM
 
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_D1_DATABASE_ID`
 
 설정 전에도 GitHub Actions의 린트·타입·빌드는 실행되며, Cloudflare 배포 단계만 안전하게 건너뜁니다.
+
+Email Service 비밀 값이 아직 없으면 예약 작업은 학습 자료와 영어 MP3를 생성해 D1/R2에 저장하고 이메일 발송만 건너뜁니다.
 
 ## 개발과 검증
 

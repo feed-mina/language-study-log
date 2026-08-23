@@ -1,7 +1,7 @@
 ---
 title: 영어·일본어·TOEIC 공부 기록 사이트 만들기
 date: 2026-08-23
-status: Cloudflare 운영 설정 대기
+status: Worker 운영 배포 완료·Email 도메인 대기
 project: language-study-log
 tags:
   - 공부기록
@@ -94,6 +94,17 @@ Sites를 통해 웹사이트를 배포했으며, 현재 공개 주소에서 접�
 
 로컬에서는 빌드, 타입 검사, 린트, D1 마이그레이션, Worker 배포 dry-run, API 인증, R2 업로드·다운로드를 검증했다. 실제 Workers AI 생성, 실제 이메일 수신, Cron 운영 실행은 Cloudflare 로그인과 리소스·비밀 값 설정 후 확인해야 한다.
 
+### Cloudflare 운영 설정 결과
+
+- APAC D1 `language-study-log-db` 생성 및 마이그레이션 2개 적용 완료
+- APAC R2 `language-study-log-assets` 생성 완료
+- `language-study-log` Worker와 Cron 3개 배포 완료
+- 운영 주소: <https://language-study-log.evolvix.workers.dev/>
+- 운영 health, materials, 사이트 HTTP 응답 확인 완료
+- Cloudflare 계정에 DNS 도메인이 없어 Email Service 발신 도메인 등록은 보류
+- 이메일 비밀 값이 없을 때는 자료·MP3 생성과 D1/R2 저장만 실행하고 메일은 건너뛰도록 구성
+- GitHub에는 Cloudflare Account ID를 등록했으며, 자동 배포용 API Token은 아직 등록 전
+
 ## 현재 상태와 아직 구현되지 않은 부분
 
 완료된 부분과 계획 중인 부분을 구분한다.
@@ -103,8 +114,8 @@ Sites를 통해 웹사이트를 배포했으며, 현재 공개 주소에서 접�
 | 학습 일정·기록 웹 화면 | 완료 | 운영 사이트에서 사용 가능 |
 | D1 일정·기록 저장 | 완료 | `study_plans`, `study_logs` 사용 |
 | GitHub 소스 저장 | 완료 | `feed-mina/language-study-log` |
-| R2 음성·PDF 저장 | 코드·로컬 검증 완료 | 원격 버킷 생성과 배포 필요 |
-| 매일 영어·일본어 자료 생성 | 코드 완료 | Workers AI 운영 실행 확인 필요 |
+| R2 음성·PDF 저장 | 운영 버킷 연결 완료 | 실제 영어 MP3 생성 확인 필요 |
+| 매일 영어·일본어 자료 생성 | Worker·Cron 배포 완료 | 첫 운영 실행 확인 필요 |
 | 이메일 자동 발송 | 코드 완료 | 발신 도메인·비밀 값·실수신 확인 필요 |
 | 영어 문장 음성 자동 생성 | 코드 완료 | Workers AI 운영 생성 확인 필요 |
 | Obsidian 자동 기록 | 미구현 | Markdown 내보내기 또는 Git 동기화 필요 |
@@ -146,7 +157,8 @@ R2: 음성·PDF·이미지 저장
 - [x] R2 버킷과 음성 파일 저장 구조 구성
 - [x] 영어 한 문장 TTS 생성 방식 결정
 - [x] 이메일 발송 코드와 수신 주소 비밀 값 구조 구성
-- [ ] Cloudflare D1·R2 실제 리소스 생성
+- [x] Cloudflare D1·R2 실제 리소스 생성
+- [x] Worker 및 Cron 운영 배포
 - [ ] Email Service 발신 도메인 등록과 비밀 값 입력
 - [ ] Workers AI 생성·MP3·실제 이메일 수신 검증
 - [ ] 사이트에 `Obsidian Markdown 내보내기` 기능 추가

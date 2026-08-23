@@ -12,7 +12,7 @@
     {
       "binding": "DB",
       "database_name": "language-study-log-db",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "database_id": "2ef83ce5-1f8a-4a53-a6f8-c4fcefa96b70",
       "migrations_dir": "./drizzle"
     }
   ],

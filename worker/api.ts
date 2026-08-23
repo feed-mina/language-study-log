@@ -174,6 +174,7 @@ export async function handleAutomationApi(request: Request, env: WorkerEnv): Pro
         service: 'language-study-log',
         time: new Date().toISOString(),
         bindings: { d1: true, r2: Boolean(env.STUDY_ASSETS), ai: Boolean(env.AI), email: Boolean(env.EMAIL) },
+        configured: { email: Boolean(env.STUDY_EMAIL_TO?.trim() && env.STUDY_EMAIL_FROM?.trim()) },
       });
     }
     if (url.pathname === '/api/materials' && request.method === 'GET') return materials(url, env);
