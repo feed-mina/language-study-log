@@ -1,7 +1,7 @@
-import { deliverContentById, generateAndDeliver } from './content';
-import { ensureAutomationSchema, findAsset, insertAsset, listAssets, listContent } from './db';
+import { deliverContentById, generateAndDeliver, resolveTelegramChatId } from './content';
+import { ensureAutomationSchema, findAsset, insertAsset, listAssets, listContent, saveTelegramConnection } from './db';
 import { isReviewRating, listDueCards, publicStudyCard, reviewCard } from './review';
-import { telegramConfigured } from './telegram';
+import { getTelegramStart, sendTelegramStudy, telegramTokenConfigured } from './telegram';
 import { isContentKind, isDate, kstDate, type ContentKind, type ContentRow, type WorkerEnv } from './types';
 
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
@@ -185,23 +185,52 @@ async function uploadAsset(request: Request, kind: ContentKind, rawFilename: str
   }, { status: 201 });
 }
 
+async function telegramConnectionStatus(env: WorkerEnv): Promise<{ token: boolean; connected: boolean }> {
+  const token = telegramTokenConfigured(env);
+  const connected = Boolean(await resolveTelegramChatId(env));
+  return { token, connected };
+}
+
+async function connectTelegram(env: WorkerEnv): Promise<Response> {
+  const status = await telegramConnectionStatus(env);
+  if (!status.token) return errorResponse(503, 'TELEGRAM_TOKEN_MISSING', 'Telegram bot token is not configured');
+  if (status.connected) return json({ ok: true, connected: true, alreadyConnected: true });
+
+  const start = await getTelegramStart(env);
+  if (!start) {
+    return errorResponse(409, 'TELEGRAM_START_NOT_FOUND', 'Send /start to the bot, then try again');
+  }
+
+  await sendTelegramStudy(env, {
+    text: '✅ 언어 공부 알림 연결이 완료되었습니다.\n\n앞으로 매일 영어·일본어 학습 자료와 영어 한 문장 MP3를 이 대화방으로 보내드릴게요.',
+    siteUrl: env.SITE_URL,
+  }, fetch, start.chatId);
+  await saveTelegramConnection(env, start.chatId, start.updateId);
+  return json({ ok: true, connected: true, confirmationSent: true });
+}
+
 export async function handleAutomationApi(request: Request, env: WorkerEnv): Promise<Response | null> {
   const url = new URL(request.url);
   if (!url.pathname.startsWith('/api/')) return null;
-  if (!url.pathname.startsWith('/api/materials') && !url.pathname.startsWith('/api/assets/') && !url.pathname.startsWith('/api/reviews/') && !url.pathname.startsWith('/api/admin/') && url.pathname !== '/api/health') return null;
+  if (!url.pathname.startsWith('/api/materials') && !url.pathname.startsWith('/api/assets/') && !url.pathname.startsWith('/api/reviews/') && !url.pathname.startsWith('/api/admin/') && !url.pathname.startsWith('/api/telegram/') && url.pathname !== '/api/health') return null;
 
   try {
     await ensureAutomationSchema(env);
     if (url.pathname === '/api/health' && request.method === 'GET') {
       const check = await env.DB.prepare('SELECT 1 AS ok').first<{ ok: number }>();
+      const telegram = await telegramConnectionStatus(env);
       return json({
         ok: check?.ok === 1,
         service: 'language-study-log',
         time: new Date().toISOString(),
         bindings: { d1: true, r2: Boolean(env.STUDY_ASSETS), ai: Boolean(env.AI) },
-        configured: { telegram: telegramConfigured(env), deliveryProvider: 'telegram-bot' },
+        configured: { telegram: telegram.token && telegram.connected, telegramToken: telegram.token, telegramChat: telegram.connected, deliveryProvider: 'telegram-bot' },
       });
     }
+    if (url.pathname === '/api/telegram/status' && request.method === 'GET') {
+      return json(await telegramConnectionStatus(env));
+    }
+    if (url.pathname === '/api/telegram/connect' && request.method === 'POST') return connectTelegram(env);
     if (url.pathname === '/api/materials' && request.method === 'GET') return materials(url, env);
     if (url.pathname === '/api/reviews/due' && request.method === 'GET') return dueReviews(url, env);
 

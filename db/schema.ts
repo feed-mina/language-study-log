@@ -118,3 +118,11 @@ export const reviewLogs = sqliteTable('review_logs', {
 }, (table) => [
   index('idx_review_logs_card_reviewed').on(table.cardId, table.reviewedAt),
 ]);
+
+export const telegramConnections = sqliteTable('telegram_connections', {
+  id: text('id').primaryKey(),
+  chatId: text('chat_id').notNull(),
+  updateId: integer('update_id').notNull(),
+  connectedAt: text('connected_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});

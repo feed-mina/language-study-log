@@ -70,10 +70,17 @@ npx wrangler r2 bucket create language-study-log-assets
 ```bash
 npx wrangler secret put ADMIN_TOKEN
 npx wrangler secret put TELEGRAM_BOT_TOKEN
-npx wrangler secret put TELEGRAM_CHAT_ID
 ```
 
-5. GitHub 저장소 Actions secrets에 아래 값을 등록합니다.
+5. 배포 후 아래 연결 API를 한 번 호출합니다. Worker는 Telegram에 보관된 가장 최근의 개인 `/start` 메시지를 확인하고 Chat ID를 D1에 저장한 뒤 확인 메시지를 발송합니다. Chat ID를 직접 복사하거나 별도 서비스에 제공할 필요가 없습니다.
+
+```bash
+curl -X POST https://language-study-log.evolvix.workers.dev/api/telegram/connect
+```
+
+연결 상태는 `GET /api/telegram/status`에서 `token`, `connected` 불리언 값으로만 확인할 수 있습니다. 기존 `TELEGRAM_CHAT_ID` Secret은 필요한 경우 수동 대상 지정용 호환 옵션으로 계속 지원합니다.
+
+6. GitHub 저장소 Actions secrets에 아래 값을 등록합니다.
 
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_API_TOKEN`

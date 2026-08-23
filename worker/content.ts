@@ -1,13 +1,14 @@
 import {
   findContent,
   findContentById,
+  findTelegramChatId,
   finishAutomationRun,
   insertAsset,
   insertContent,
   listAssets,
   startAutomationRun,
 } from './db';
-import { sendTelegramStudy, telegramConfigured, type TelegramAudio } from './telegram';
+import { sendTelegramStudy, telegramTokenConfigured, type TelegramAudio } from './telegram';
 import { extractJson, kstDate, kindFromCron, type ContentKind, type ContentRow, type StudyPayload, type WorkerEnv } from './types';
 
 export const CONTENT_MODEL = '@cf/zai-org/glm-4.7-flash';
@@ -82,9 +83,17 @@ async function sha256(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export async function deliverContent(env: WorkerEnv, content: ContentRow): Promise<{ sent: boolean; messageId?: string }> {
-  const chatId = env.TELEGRAM_CHAT_ID?.trim();
-  if (!chatId || !telegramConfigured(env)) throw new Error('Telegram delivery must be configured');
+export async function resolveTelegramChatId(env: WorkerEnv): Promise<string | null> {
+  return env.TELEGRAM_CHAT_ID?.trim() || findTelegramChatId(env);
+}
+
+export async function deliverContent(
+  env: WorkerEnv,
+  content: ContentRow,
+  chatIdOverride?: string,
+): Promise<{ sent: boolean; messageId?: string }> {
+  const chatId = chatIdOverride?.trim() || await resolveTelegramChatId(env);
+  if (!chatId || !telegramTokenConfigured(env)) throw new Error('Telegram delivery must be configured');
 
   const recipientHash = await sha256(chatId);
   const now = new Date().toISOString();
@@ -133,7 +142,7 @@ export async function deliverContent(env: WorkerEnv, content: ContentRow): Promi
       text,
       siteUrl,
       audio: telegramAudio,
-    });
+    }, fetch, chatId);
     const providerId = result.messageIds.join(',');
     await env.DB.prepare(`UPDATE delivery_logs SET status = 'sent', provider_id = ?, updated_at = ? WHERE id = ?`)
       .bind(providerId, new Date().toISOString(), deliveryId)
@@ -151,10 +160,11 @@ export async function deliverContent(env: WorkerEnv, content: ContentRow): Promi
 export async function generateAndDeliver(env: WorkerEnv, date: string, kind: ContentKind, sendDelivery = true): Promise<{ content: ContentRow; sent: boolean; messageId?: string }> {
   const content = await generateContent(env, date, kind);
   if (kind === 'english') await ensureEnglishAudio(env, content);
-  if (!sendDelivery || !telegramConfigured(env)) {
+  const chatId = sendDelivery && telegramTokenConfigured(env) ? await resolveTelegramChatId(env) : null;
+  if (!sendDelivery || !chatId || !telegramTokenConfigured(env)) {
     return { content, sent: false };
   }
-  const delivery = await deliverContent(env, content);
+  const delivery = await deliverContent(env, content, chatId);
   return { content, ...delivery };
 }
 

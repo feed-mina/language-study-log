@@ -1,12 +1,33 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { sendTelegramStudy, splitTelegramText, telegramConfigured, type TelegramEnv } from './telegram.ts';
+import { findLatestPrivateStart, getTelegramStart, sendTelegramStudy, splitTelegramText, telegramConfigured, telegramTokenConfigured, type TelegramEnv } from './telegram.ts';
 
 test('telegramConfigured requires both private values', () => {
   assert.equal(telegramConfigured({}), false);
   assert.equal(telegramConfigured({ TELEGRAM_BOT_TOKEN: 'token' }), false);
   assert.equal(telegramConfigured({ TELEGRAM_BOT_TOKEN: 'token', TELEGRAM_CHAT_ID: '123' }), true);
+  assert.equal(telegramTokenConfigured({ TELEGRAM_BOT_TOKEN: 'token' }), true);
+});
+
+test('findLatestPrivateStart selects the newest private /start update', () => {
+  assert.deepEqual(findLatestPrivateStart([
+    { update_id: 10, message: { text: '/start', chat: { id: 111, type: 'private' } } },
+    { update_id: 11, message: { text: '/start', chat: { id: -222, type: 'group' } } },
+    { update_id: 12, message: { text: '/start language', chat: { id: 333, type: 'private' } } },
+  ]), { chatId: '333', updateId: 12 });
+});
+
+test('getTelegramStart reads updates without exposing the token', async () => {
+  const token = 'private-token';
+  const fetcher = (async (input: RequestInfo | URL) => {
+    assert.match(input.toString(), /\/botprivate-token\/getUpdates$/);
+    return Response.json({
+      ok: true,
+      result: [{ update_id: 9, message: { text: '/start', chat: { id: 456, type: 'private' } } }],
+    });
+  }) as typeof fetch;
+  assert.deepEqual(await getTelegramStart({ TELEGRAM_BOT_TOKEN: token }, fetcher), { chatId: '456', updateId: 9 });
 });
 
 test('splitTelegramText keeps every chunk within the Telegram limit', () => {

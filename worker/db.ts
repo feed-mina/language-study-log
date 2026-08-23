@@ -101,7 +101,29 @@ export async function ensureAutomationSchema(env: WorkerEnv): Promise<void> {
       created_at TEXT NOT NULL
     )`),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_review_logs_card_reviewed ON review_logs(card_id, reviewed_at)'),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS telegram_connections (
+      id TEXT PRIMARY KEY,
+      chat_id TEXT NOT NULL,
+      update_id INTEGER NOT NULL,
+      connected_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`),
   ]);
+}
+
+export async function findTelegramChatId(env: WorkerEnv): Promise<string | null> {
+  const row = await env.DB.prepare("SELECT chat_id FROM telegram_connections WHERE id = 'primary' LIMIT 1")
+    .first<{ chat_id: string }>();
+  return row?.chat_id?.trim() || null;
+}
+
+export async function saveTelegramConnection(env: WorkerEnv, chatId: string, updateId: number): Promise<void> {
+  const now = new Date().toISOString();
+  await env.DB.prepare(`INSERT INTO telegram_connections (id, chat_id, update_id, connected_at, updated_at)
+    VALUES ('primary', ?, ?, ?, ?)
+    ON CONFLICT(id) DO NOTHING`)
+    .bind(chatId, updateId, now, now)
+    .run();
 }
 
 export async function findContent(env: WorkerEnv, date: string, kind: ContentKind): Promise<ContentRow | null> {
