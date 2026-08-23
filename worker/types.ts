@@ -46,6 +46,29 @@ export interface AssetRow {
   created_at: string;
 }
 
+export interface StudyCardRow {
+  id: string;
+  content_id: string | null;
+  language: string;
+  category: string;
+  prompt: string;
+  answer: string;
+  explanation: string;
+  source: string;
+  due: string;
+  stability: number;
+  difficulty: number;
+  elapsed_days: number;
+  scheduled_days: number;
+  learning_steps: number;
+  reps: number;
+  lapses: number;
+  state: number;
+  last_review: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export function isContentKind(value: unknown): value is ContentKind {
   return typeof value === 'string' && CONTENT_KINDS.includes(value as ContentKind);
 }

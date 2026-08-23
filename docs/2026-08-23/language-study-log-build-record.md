@@ -1,7 +1,7 @@
 ---
 title: 영어·일본어·TOEIC 공부 기록 사이트 만들기
 date: 2026-08-23
-status: Worker 운영 배포 완료·Gmail OAuth 설정 대기
+status: Telegram·FSRS 전환 구현 중
 project: language-study-log
 tags:
   - 공부기록
@@ -89,10 +89,11 @@ Sites를 통해 웹사이트를 배포했으며, 현재 공개 주소에서 접�
 - Workers AI 학습 콘텐츠 생성 및 영어 첫 문장 MP3 생성 코드
 - D1 콘텐츠·파일 메타데이터·발송 이력·자동화 실행 이력 테이블
 - R2 MP3/PDF/이미지 저장과 20 MiB 업로드 제한
-- Gmail API 본문/HTML/MP3 첨부 발송 및 중복 발송 방지
+- Telegram Bot 본문/MP3 발송 및 중복 발송 방지
+- FSRS 복습 카드와 복습 이력 D1 구조
 - GitHub Actions 검사와 Cloudflare 자동 배포 워크플로
 
-로컬에서는 빌드, 타입 검사, 린트, D1 마이그레이션, Worker 배포 dry-run, API 인증, R2 업로드·다운로드를 검증했다. 실제 Workers AI 생성과 Cron 운영 실행은 운영 환경에서, 실제 이메일 수신은 Google OAuth 비밀 값 설정 후 확인해야 한다.
+로컬에서는 빌드, 타입 검사, 린트, D1 마이그레이션, Worker 배포 dry-run, API 인증, R2 업로드·다운로드를 검증했다. 실제 Workers AI 생성과 Cron 운영 실행은 운영 환경에서, Telegram 실수신은 Bot Token과 Chat ID 설정 후 확인해야 한다.
 
 ### Cloudflare 운영 설정 결과
 
@@ -101,8 +102,8 @@ Sites를 통해 웹사이트를 배포했으며, 현재 공개 주소에서 접�
 - `language-study-log` Worker와 Cron 3개 배포 완료
 - 운영 주소: <https://language-study-log.evolvix.workers.dev/>
 - 운영 health, materials, 사이트 HTTP 응답 확인 완료
-- 사용자 소유 도메인 대신 Gmail API OAuth 발송 방식으로 전환
-- Gmail OAuth 비밀 값이 없을 때는 자료·MP3 생성과 D1/R2 저장만 실행하고 메일은 건너뛰도록 구성
+- Gmail 대신 Telegram Bot 발송 방식으로 전환
+- Telegram 비밀 값이 없을 때는 자료·MP3 생성과 D1/R2 저장만 실행하고 알림은 건너뛰도록 구성
 - GitHub에 Cloudflare Account ID와 API Token을 등록했고, Actions에서 D1 마이그레이션과 Worker 자동 배포 성공을 확인
 
 ## 현재 상태와 아직 구현되지 않은 부분
@@ -116,7 +117,8 @@ Sites를 통해 웹사이트를 배포했으며, 현재 공개 주소에서 접�
 | GitHub 소스 저장 | 완료 | `feed-mina/language-study-log` |
 | R2 음성·PDF 저장 | 운영 버킷 연결 완료 | 실제 영어 MP3 생성 확인 필요 |
 | 매일 영어·일본어 자료 생성 | Worker·Cron 배포 완료 | 첫 운영 실행 확인 필요 |
-| 이메일 자동 발송 | Gmail API 코드 완료 | OAuth 비밀 값·실수신 확인 필요 |
+| Telegram 자동 발송 | 코드 완료 | Bot Token·Chat ID·실수신 확인 필요 |
+| FSRS 복습 일정 | 기반 구현 | 사이트 평가 UI와 Telegram 버튼 필요 |
 | 영어 문장 음성 자동 생성 | 코드 완료 | Workers AI 운영 생성 확인 필요 |
 | Obsidian 자동 기록 | 미구현 | Markdown 내보내기 또는 Git 동기화 필요 |
 | GitBook 공개 동기화 | 미구현 | 공개 전용 폴더와 Git Sync 설정 필요 |
@@ -156,11 +158,12 @@ R2: 음성·PDF·이미지 저장
 - [x] Cloudflare Worker Cron 구성
 - [x] R2 버킷과 음성 파일 저장 구조 구성
 - [x] 영어 한 문장 TTS 생성 방식 결정
-- [x] 이메일 발송 코드와 수신 주소 비밀 값 구조 구성
+- [x] Telegram 발송 코드와 비밀 값 구조 구성
+- [x] FSRS 복습 카드·이력 기반 구성
 - [x] Cloudflare D1·R2 실제 리소스 생성
 - [x] Worker 및 Cron 운영 배포
-- [ ] Google Cloud Gmail API·OAuth 설정과 비밀 값 입력
-- [ ] Workers AI 생성·MP3·실제 이메일 수신 검증
+- [ ] Telegram Bot Token·Chat ID 입력
+- [ ] Workers AI 생성·MP3·Telegram 실수신 검증
 - [ ] 사이트에 `Obsidian Markdown 내보내기` 기능 추가
 - [ ] Obsidian 비공개 기록 경로 확정
 - [ ] GitBook 공개 전용 `publish/` 폴더 구성
@@ -168,4 +171,4 @@ R2: 음성·PDF·이미지 저장
 
 ## 운영 원칙
 
-이 문서는 실제로 확인된 구현 상태를 기준으로 갱신한다. 빌드 성공, GitHub 커밋, 배포, 데이터베이스 연결, 이메일 발송과 예약 실행은 서로 다른 완료 단계로 구분하여 기록한다.
+이 문서는 실제로 확인된 구현 상태를 기준으로 갱신한다. 빌드 성공, GitHub 커밋, 배포, 데이터베이스 연결, Telegram 발송과 예약 실행은 서로 다른 완료 단계로 구분하여 기록한다.

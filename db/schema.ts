@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const studyPlans = sqliteTable('study_plans', {
   id: text('id').primaryKey(),
@@ -76,3 +76,45 @@ export const automationRuns = sqliteTable('automation_runs', {
   startedAt: text('started_at').notNull(),
   finishedAt: text('finished_at'),
 }, (table) => [index('idx_automation_runs_scheduled').on(table.scheduledFor)]);
+
+export const studyCards = sqliteTable('study_cards', {
+  id: text('id').primaryKey(),
+  contentId: text('content_id'),
+  language: text('language').notNull(),
+  category: text('category').notNull(),
+  prompt: text('prompt').notNull(),
+  answer: text('answer').notNull(),
+  explanation: text('explanation').notNull().default(''),
+  source: text('source').notNull().default('generated'),
+  due: text('due').notNull(),
+  stability: real('stability').notNull().default(0),
+  difficulty: real('difficulty').notNull().default(0),
+  elapsedDays: integer('elapsed_days').notNull().default(0),
+  scheduledDays: integer('scheduled_days').notNull().default(0),
+  learningSteps: integer('learning_steps').notNull().default(0),
+  reps: integer('reps').notNull().default(0),
+  lapses: integer('lapses').notNull().default(0),
+  state: integer('state').notNull().default(0),
+  lastReview: text('last_review'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (table) => [
+  uniqueIndex('uq_study_cards_content_prompt').on(table.contentId, table.prompt),
+  index('idx_study_cards_due').on(table.due),
+  index('idx_study_cards_language_due').on(table.language, table.due),
+]);
+
+export const reviewLogs = sqliteTable('review_logs', {
+  id: text('id').primaryKey(),
+  cardId: text('card_id').notNull(),
+  rating: integer('rating').notNull(),
+  reviewedAt: text('reviewed_at').notNull(),
+  previousDue: text('previous_due').notNull(),
+  nextDue: text('next_due').notNull(),
+  scheduledDays: integer('scheduled_days').notNull(),
+  stability: real('stability').notNull(),
+  difficulty: real('difficulty').notNull(),
+  createdAt: text('created_at').notNull(),
+}, (table) => [
+  index('idx_review_logs_card_reviewed').on(table.cardId, table.reviewedAt),
+]);

@@ -1,6 +1,7 @@
 import { deliverContentById, generateAndDeliver } from './content';
 import { ensureAutomationSchema, findAsset, insertAsset, listAssets, listContent } from './db';
-import { gmailConfigured } from './gmail';
+import { isReviewRating, listDueCards, publicStudyCard, reviewCard } from './review';
+import { telegramConfigured } from './telegram';
 import { isContentKind, isDate, kstDate, type ContentKind, type ContentRow, type WorkerEnv } from './types';
 
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
@@ -107,12 +108,35 @@ async function generate(request: Request, env: WorkerEnv): Promise<Response> {
   const kind = body.kind;
   if (!isDate(date)) return errorResponse(400, 'INVALID_DATE', 'date must use YYYY-MM-DD');
   if (!isContentKind(kind)) return errorResponse(400, 'INVALID_KIND', 'kind must be english, japanese, or toeic');
-  const result = await generateAndDeliver(env, date, kind, body.sendEmail !== false);
+  const result = await generateAndDeliver(env, date, kind, body.sendTelegram !== false);
   return json({
     ok: true,
     content: publicContent(result.content, await listAssets(env, result.content.id)),
     delivery: { sent: result.sent, messageId: result.messageId },
   }, { status: 201 });
+}
+
+async function dueReviews(url: URL, env: WorkerEnv): Promise<Response> {
+  const language = url.searchParams.get('language')?.trim() || undefined;
+  if (language && !['english', 'japanese', 'toeic'].includes(language)) {
+    return errorResponse(400, 'INVALID_LANGUAGE', 'language must be english, japanese, or toeic');
+  }
+  const limitValue = Number(url.searchParams.get('limit') ?? '20');
+  if (!Number.isInteger(limitValue) || limitValue < 1 || limitValue > 50) {
+    return errorResponse(400, 'INVALID_LIMIT', 'limit must be an integer between 1 and 50');
+  }
+  const cards = await listDueCards(env, language, limitValue);
+  return json({ cards: cards.map(publicStudyCard) });
+}
+
+async function submitReview(request: Request, cardId: string, env: WorkerEnv): Promise<Response> {
+  if (!cardId || cardId.length > 140) return errorResponse(400, 'INVALID_CARD_ID', 'Invalid card id');
+  const body = await readJsonObject(request);
+  if (!isReviewRating(body.rating)) {
+    return errorResponse(400, 'INVALID_RATING', 'rating must be again, hard, good, or easy');
+  }
+  const card = await reviewCard(env, cardId, body.rating);
+  return json({ ok: true, card: publicStudyCard(card) });
 }
 
 async function sendExisting(contentId: string, env: WorkerEnv): Promise<Response> {
@@ -164,7 +188,7 @@ async function uploadAsset(request: Request, kind: ContentKind, rawFilename: str
 export async function handleAutomationApi(request: Request, env: WorkerEnv): Promise<Response | null> {
   const url = new URL(request.url);
   if (!url.pathname.startsWith('/api/')) return null;
-  if (!url.pathname.startsWith('/api/materials') && !url.pathname.startsWith('/api/assets/') && !url.pathname.startsWith('/api/admin/') && url.pathname !== '/api/health') return null;
+  if (!url.pathname.startsWith('/api/materials') && !url.pathname.startsWith('/api/assets/') && !url.pathname.startsWith('/api/reviews/') && !url.pathname.startsWith('/api/admin/') && url.pathname !== '/api/health') return null;
 
   try {
     await ensureAutomationSchema(env);
@@ -175,10 +199,11 @@ export async function handleAutomationApi(request: Request, env: WorkerEnv): Pro
         service: 'language-study-log',
         time: new Date().toISOString(),
         bindings: { d1: true, r2: Boolean(env.STUDY_ASSETS), ai: Boolean(env.AI) },
-        configured: { email: gmailConfigured(env), emailProvider: 'gmail-api' },
+        configured: { telegram: telegramConfigured(env), deliveryProvider: 'telegram-bot' },
       });
     }
     if (url.pathname === '/api/materials' && request.method === 'GET') return materials(url, env);
+    if (url.pathname === '/api/reviews/due' && request.method === 'GET') return dueReviews(url, env);
 
     const assetMatch = url.pathname.match(/^\/api\/assets\/([a-f0-9-]+)$/i);
     if (assetMatch && (request.method === 'GET' || request.method === 'HEAD')) return assetResponse(request, assetMatch[1], env);
@@ -191,6 +216,9 @@ export async function handleAutomationApi(request: Request, env: WorkerEnv): Pro
     const sendMatch = url.pathname.match(/^\/api\/admin\/send\/([a-f0-9-]+)$/i);
     if (sendMatch && request.method === 'POST') return sendExisting(sendMatch[1], env);
 
+    const reviewMatch = url.pathname.match(/^\/api\/admin\/reviews\/(.+)$/);
+    if (reviewMatch && request.method === 'POST') return submitReview(request, decodeURIComponent(reviewMatch[1]), env);
+
     const uploadMatch = url.pathname.match(/^\/api\/admin\/assets\/(english|japanese|toeic)\/([^/]+)$/);
     if (uploadMatch && request.method === 'PUT') {
       return uploadAsset(request, uploadMatch[1] as ContentKind, decodeURIComponent(uploadMatch[2]), url, env);
@@ -200,6 +228,8 @@ export async function handleAutomationApi(request: Request, env: WorkerEnv): Pro
     const message = error instanceof Error ? error.message : 'Unknown API error';
     console.error(JSON.stringify({ event: 'api_error', path: url.pathname, method: request.method, message }));
     if (message === 'Study content not found') return errorResponse(404, 'CONTENT_NOT_FOUND', message);
+    if (message === 'Study card not found') return errorResponse(404, 'CARD_NOT_FOUND', message);
+    if (message.includes('Study card changed')) return errorResponse(409, 'REVIEW_CONFLICT', message);
     if (message.includes('JSON') || message.includes('body is too large')) return errorResponse(400, 'INVALID_REQUEST', message);
     return errorResponse(500, 'INTERNAL_ERROR', 'The request could not be completed');
   }

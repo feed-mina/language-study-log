@@ -7,7 +7,7 @@ import {
   listAssets,
   startAutomationRun,
 } from './db';
-import { gmailConfigured, sendGmailMessage, type GmailAttachment } from './gmail';
+import { sendTelegramStudy, telegramConfigured, type TelegramAudio } from './telegram';
 import { extractJson, kstDate, kindFromCron, type ContentKind, type ContentRow, type StudyPayload, type WorkerEnv } from './types';
 
 export const CONTENT_MODEL = '@cf/zai-org/glm-4.7-flash';
@@ -77,33 +77,26 @@ export async function ensureEnglishAudio(env: WorkerEnv, content: ContentRow, pa
   });
 }
 
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (character) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  })[character] ?? character);
-}
-
 async function sha256(value: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 export async function deliverContent(env: WorkerEnv, content: ContentRow): Promise<{ sent: boolean; messageId?: string }> {
-  const to = env.STUDY_EMAIL_TO?.trim();
-  const from = env.STUDY_EMAIL_FROM?.trim();
-  if (!to || !from || !gmailConfigured(env)) throw new Error('Gmail email delivery must be configured');
+  const chatId = env.TELEGRAM_CHAT_ID?.trim();
+  if (!chatId || !telegramConfigured(env)) throw new Error('Telegram delivery must be configured');
 
-  const recipientHash = await sha256(to.toLowerCase());
+  const recipientHash = await sha256(chatId);
   const now = new Date().toISOString();
   let deliveryId = crypto.randomUUID();
   const claim = await env.DB.prepare(`INSERT OR IGNORE INTO delivery_logs
     (id, content_id, channel, recipient_hash, status, provider_id, error, created_at, updated_at)
-    VALUES (?, ?, 'email', ?, 'sending', '', '', ?, ?)`)
+    VALUES (?, ?, 'telegram', ?, 'sending', '', '', ?, ?)`)
     .bind(deliveryId, content.id, recipientHash, now, now)
     .run();
   if ((claim.meta.changes ?? 0) === 0) {
     const previous = await env.DB.prepare(`SELECT id, status FROM delivery_logs
-      WHERE content_id = ? AND channel = 'email' AND recipient_hash = ? LIMIT 1`)
+      WHERE content_id = ? AND channel = 'telegram' AND recipient_hash = ? LIMIT 1`)
       .bind(content.id, recipientHash)
       .first<{ id: string; status: string }>();
     if (!previous || previous.status !== 'failed') return { sent: false };
@@ -119,37 +112,35 @@ export async function deliverContent(env: WorkerEnv, content: ContentRow): Promi
   const siteUrl = (env.SITE_URL ?? '').replace(/\/$/, '');
   const assetRows = await listAssets(env, content.id);
   const audio = assetRows.find((asset) => asset.kind === 'speaking-audio' && asset.bytes <= 4 * 1024 * 1024);
-  const attachments: GmailAttachment[] = [];
+  let telegramAudio: TelegramAudio | undefined;
   if (audio) {
     const object = await env.STUDY_ASSETS.get(audio.r2_key);
-    if (object) attachments.push({
+    if (object) telegramAudio = {
       filename: audio.filename,
       type: audio.content_type,
       content: await object.arrayBuffer(),
-    });
+      caption: payload.speakingSentence
+        ? `오늘의 영어 한 문장\n${payload.speakingSentence}${payload.speakingMeaning ? `\n${payload.speakingMeaning}` : ''}`
+        : '오늘의 영어 듣기 자료',
+    };
   }
 
   const lines = payload.items.map((item, index) => `${index + 1}. ${item.prompt}\n정답: ${item.answer}\n설명: ${item.explanation}`);
-  const text = `${payload.title}\n\n${payload.summary}\n\n${lines.join('\n\n')}\n\n학습 기록: ${siteUrl}`;
-  const htmlItems = payload.items.map((item, index) => `<li><strong>${index + 1}. ${escapeHtml(item.prompt)}</strong><br>정답: ${escapeHtml(item.answer)}<br><small>${escapeHtml(item.explanation)}</small></li>`).join('');
-  const html = `<h1>${escapeHtml(payload.title)}</h1><p>${escapeHtml(payload.summary)}</p><ol>${htmlItems}</ol><p><a href="${escapeHtml(siteUrl)}">오늘 학습 기록하기</a></p>`;
+  const text = `📚 ${payload.title}\n\n${payload.summary}\n\n${lines.join('\n\n')}`;
 
   try {
-    const result = await sendGmailMessage(env, {
-      to,
-      from,
-      fromName: 'Language Study Log',
-      subject: `[${content.content_date}] ${content.title}`,
+    const result = await sendTelegramStudy(env, {
       text,
-      html,
-      attachments,
+      siteUrl,
+      audio: telegramAudio,
     });
+    const providerId = result.messageIds.join(',');
     await env.DB.prepare(`UPDATE delivery_logs SET status = 'sent', provider_id = ?, updated_at = ? WHERE id = ?`)
-      .bind(result.messageId, new Date().toISOString(), deliveryId)
+      .bind(providerId, new Date().toISOString(), deliveryId)
       .run();
-    return { sent: true, messageId: result.messageId };
+    return { sent: true, messageId: providerId };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown email error';
+    const message = error instanceof Error ? error.message : 'Unknown Telegram error';
     await env.DB.prepare(`UPDATE delivery_logs SET status = 'failed', error = ?, updated_at = ? WHERE id = ?`)
       .bind(message.slice(0, 1000), new Date().toISOString(), deliveryId)
       .run();
@@ -157,10 +148,10 @@ export async function deliverContent(env: WorkerEnv, content: ContentRow): Promi
   }
 }
 
-export async function generateAndDeliver(env: WorkerEnv, date: string, kind: ContentKind, sendEmail = true): Promise<{ content: ContentRow; sent: boolean; messageId?: string }> {
+export async function generateAndDeliver(env: WorkerEnv, date: string, kind: ContentKind, sendDelivery = true): Promise<{ content: ContentRow; sent: boolean; messageId?: string }> {
   const content = await generateContent(env, date, kind);
   if (kind === 'english') await ensureEnglishAudio(env, content);
-  if (!sendEmail || !gmailConfigured(env)) {
+  if (!sendDelivery || !telegramConfigured(env)) {
     return { content, sent: false };
   }
   const delivery = await deliverContent(env, content);

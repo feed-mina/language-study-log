@@ -1,4 +1,5 @@
 import type { AssetRow, ContentKind, ContentRow, StudyPayload, WorkerEnv } from './types';
+import { createEmptyCard } from 'ts-fsrs';
 
 export async function ensureAutomationSchema(env: WorkerEnv): Promise<void> {
   await env.DB.batch([
@@ -62,6 +63,44 @@ export async function ensureAutomationSchema(env: WorkerEnv): Promise<void> {
       finished_at TEXT
     )`),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_automation_runs_scheduled ON automation_runs(scheduled_for)'),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS study_cards (
+      id TEXT PRIMARY KEY,
+      content_id TEXT,
+      language TEXT NOT NULL,
+      category TEXT NOT NULL,
+      prompt TEXT NOT NULL,
+      answer TEXT NOT NULL,
+      explanation TEXT NOT NULL DEFAULT '',
+      source TEXT NOT NULL DEFAULT 'generated',
+      due TEXT NOT NULL,
+      stability REAL NOT NULL DEFAULT 0,
+      difficulty REAL NOT NULL DEFAULT 0,
+      elapsed_days INTEGER NOT NULL DEFAULT 0,
+      scheduled_days INTEGER NOT NULL DEFAULT 0,
+      learning_steps INTEGER NOT NULL DEFAULT 0,
+      reps INTEGER NOT NULL DEFAULT 0,
+      lapses INTEGER NOT NULL DEFAULT 0,
+      state INTEGER NOT NULL DEFAULT 0,
+      last_review TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`),
+    env.DB.prepare('CREATE UNIQUE INDEX IF NOT EXISTS uq_study_cards_content_prompt ON study_cards(content_id, prompt)'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_study_cards_due ON study_cards(due)'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_study_cards_language_due ON study_cards(language, due)'),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS review_logs (
+      id TEXT PRIMARY KEY,
+      card_id TEXT NOT NULL,
+      rating INTEGER NOT NULL,
+      reviewed_at TEXT NOT NULL,
+      previous_due TEXT NOT NULL,
+      next_due TEXT NOT NULL,
+      scheduled_days INTEGER NOT NULL,
+      stability REAL NOT NULL,
+      difficulty REAL NOT NULL,
+      created_at TEXT NOT NULL
+    )`),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_review_logs_card_reviewed ON review_logs(card_id, reviewed_at)'),
   ]);
 }
 
@@ -108,6 +147,34 @@ export async function insertContent(
     VALUES (?, ?, ?, ?, ?, ?, 0, ?)`)
     .bind(`content:${stored.id}`, date, category, payload.title, payload.summary.slice(0, 120), minutes, now)
     .run();
+
+  const newCard = createEmptyCard(new Date(now));
+  const cardStatements = payload.items.map((item, index) => env.DB.prepare(`INSERT OR IGNORE INTO study_cards
+    (id, content_id, language, category, prompt, answer, explanation, source, due, stability, difficulty,
+     elapsed_days, scheduled_days, learning_steps, reps, lapses, state, last_review, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'generated', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(
+      `card:${stored.id}:${index + 1}`,
+      stored.id,
+      kind,
+      kind,
+      item.prompt,
+      item.answer,
+      item.explanation,
+      newCard.due.toISOString(),
+      newCard.stability,
+      newCard.difficulty,
+      newCard.elapsed_days,
+      newCard.scheduled_days,
+      newCard.learning_steps,
+      newCard.reps,
+      newCard.lapses,
+      newCard.state,
+      newCard.last_review?.toISOString() ?? null,
+      now,
+      now,
+    ));
+  if (cardStatements.length > 0) await env.DB.batch(cardStatements);
   return stored;
 }
 
