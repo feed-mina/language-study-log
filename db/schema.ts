@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const studyPlans = sqliteTable('study_plans', {
   id: text('id').primaryKey(),
@@ -21,3 +21,58 @@ export const studyLogs = sqliteTable('study_logs', {
   note: text('note').notNull().default(''),
   createdAt: text('created_at').notNull(),
 }, (table) => [index('idx_study_logs_date').on(table.studyDate)]);
+
+export const studyContent = sqliteTable('study_content', {
+  id: text('id').primaryKey(),
+  contentDate: text('content_date').notNull(),
+  kind: text('kind').notNull(),
+  title: text('title').notNull(),
+  summary: text('summary').notNull().default(''),
+  bodyJson: text('body_json').notNull(),
+  model: text('model').notNull(),
+  status: text('status').notNull().default('ready'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (table) => [
+  uniqueIndex('uq_study_content_date_kind').on(table.contentDate, table.kind),
+  index('idx_study_content_date').on(table.contentDate),
+]);
+
+export const studyAssets = sqliteTable('study_assets', {
+  id: text('id').primaryKey(),
+  contentId: text('content_id'),
+  kind: text('kind').notNull(),
+  r2Key: text('r2_key').notNull(),
+  filename: text('filename').notNull(),
+  contentType: text('content_type').notNull(),
+  bytes: integer('bytes').notNull(),
+  createdAt: text('created_at').notNull(),
+}, (table) => [
+  uniqueIndex('uq_study_assets_r2_key').on(table.r2Key),
+  index('idx_study_assets_content').on(table.contentId),
+]);
+
+export const deliveryLogs = sqliteTable('delivery_logs', {
+  id: text('id').primaryKey(),
+  contentId: text('content_id').notNull(),
+  channel: text('channel').notNull(),
+  recipientHash: text('recipient_hash').notNull(),
+  status: text('status').notNull(),
+  providerId: text('provider_id').notNull().default(''),
+  error: text('error').notNull().default(''),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (table) => [
+  uniqueIndex('uq_delivery_content_channel_recipient').on(table.contentId, table.channel, table.recipientHash),
+  index('idx_delivery_content').on(table.contentId),
+]);
+
+export const automationRuns = sqliteTable('automation_runs', {
+  id: text('id').primaryKey(),
+  jobKind: text('job_kind').notNull(),
+  scheduledFor: text('scheduled_for').notNull(),
+  status: text('status').notNull(),
+  detail: text('detail').notNull().default(''),
+  startedAt: text('started_at').notNull(),
+  finishedAt: text('finished_at'),
+}, (table) => [index('idx_automation_runs_scheduled').on(table.scheduledFor)]);

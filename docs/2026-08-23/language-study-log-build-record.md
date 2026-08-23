@@ -1,7 +1,7 @@
 ---
 title: 영어·일본어·TOEIC 공부 기록 사이트 만들기
 date: 2026-08-23
-status: 진행 중
+status: Cloudflare 운영 설정 대기
 project: language-study-log
 tags:
   - 공부기록
@@ -30,7 +30,7 @@ tags:
 - 운영 사이트: <https://toeic-daily-study-log.minyerin.chatgpt.site/>
 - GitHub 저장소: <https://github.com/feed-mina/language-study-log>
 - 기본 브랜치: `main`
-- 현재 기준 커밋: `9078586` (`Set production social metadata`)
+- 구현 이력: GitHub `main` 브랜치의 커밋 기록에서 확인
 
 ## 지금까지 완료한 과정
 
@@ -79,6 +79,21 @@ Sites를 통해 웹사이트를 배포했으며, 현재 공개 주소에서 접�
 5. 하루 기록을 Markdown으로 만들어 Obsidian에 보관
 6. 공개할 내용만 별도 폴더를 통해 GitBook에 공유
 
+## 2026-08-23 자동화 API 구현 업데이트
+
+사이트 Worker 엔트리에 자동화 API와 예약 실행기를 추가했다.
+
+- `GET /api/health`, `GET /api/materials`, `GET /api/assets/:id`
+- Bearer 토큰으로 보호되는 자료 생성·재발송·파일 업로드 API
+- 매일 06:30 영어, 08:00 일본어, 월–토 18:00 TOEIC Cron 설정
+- Workers AI 학습 콘텐츠 생성 및 영어 첫 문장 MP3 생성 코드
+- D1 콘텐츠·파일 메타데이터·발송 이력·자동화 실행 이력 테이블
+- R2 MP3/PDF/이미지 저장과 20 MiB 업로드 제한
+- Email Service 본문/HTML/MP3 첨부 발송 및 중복 발송 방지
+- GitHub Actions 검사와 Cloudflare 자동 배포 워크플로
+
+로컬에서는 빌드, 타입 검사, 린트, D1 마이그레이션, Worker 배포 dry-run, API 인증, R2 업로드·다운로드를 검증했다. 실제 Workers AI 생성, 실제 이메일 수신, Cron 운영 실행은 Cloudflare 로그인과 리소스·비밀 값 설정 후 확인해야 한다.
+
 ## 현재 상태와 아직 구현되지 않은 부분
 
 완료된 부분과 계획 중인 부분을 구분한다.
@@ -88,10 +103,10 @@ Sites를 통해 웹사이트를 배포했으며, 현재 공개 주소에서 접�
 | 학습 일정·기록 웹 화면 | 완료 | 운영 사이트에서 사용 가능 |
 | D1 일정·기록 저장 | 완료 | `study_plans`, `study_logs` 사용 |
 | GitHub 소스 저장 | 완료 | `feed-mina/language-study-log` |
-| R2 음성·PDF 저장 | 미구현 | 현재 hosting 설정의 R2 바인딩은 없음 |
-| 매일 영어·일본어 자료 생성 | 미구현 | 예약 작업과 생성 규칙 필요 |
-| 이메일 자동 발송 | 미구현 | 발송 서비스와 수신 주소 설정 필요 |
-| 영어 문장 음성 자동 생성 | 미구현 | TTS 생성 및 R2 저장 필요 |
+| R2 음성·PDF 저장 | 코드·로컬 검증 완료 | 원격 버킷 생성과 배포 필요 |
+| 매일 영어·일본어 자료 생성 | 코드 완료 | Workers AI 운영 실행 확인 필요 |
+| 이메일 자동 발송 | 코드 완료 | 발신 도메인·비밀 값·실수신 확인 필요 |
+| 영어 문장 음성 자동 생성 | 코드 완료 | Workers AI 운영 생성 확인 필요 |
 | Obsidian 자동 기록 | 미구현 | Markdown 내보내기 또는 Git 동기화 필요 |
 | GitBook 공개 동기화 | 미구현 | 공개 전용 폴더와 Git Sync 설정 필요 |
 
@@ -127,10 +142,13 @@ R2: 음성·PDF·이미지 저장
 
 - [ ] 사이트에 영어·일본어·TOEIC 학습 유형 추가
 - [ ] 매일 실행할 예약 시간과 학습량 확정
-- [ ] Cloudflare Worker Cron 구성
-- [ ] R2 버킷과 음성 파일 저장 구조 구성
-- [ ] 영어 한 문장 TTS 생성 방식 결정
-- [ ] 이메일 발송 방식과 수신 주소 설정
+- [x] Cloudflare Worker Cron 구성
+- [x] R2 버킷과 음성 파일 저장 구조 구성
+- [x] 영어 한 문장 TTS 생성 방식 결정
+- [x] 이메일 발송 코드와 수신 주소 비밀 값 구조 구성
+- [ ] Cloudflare D1·R2 실제 리소스 생성
+- [ ] Email Service 발신 도메인 등록과 비밀 값 입력
+- [ ] Workers AI 생성·MP3·실제 이메일 수신 검증
 - [ ] 사이트에 `Obsidian Markdown 내보내기` 기능 추가
 - [ ] Obsidian 비공개 기록 경로 확정
 - [ ] GitBook 공개 전용 `publish/` 폴더 구성

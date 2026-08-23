@@ -1,0 +1,4 @@
+# Copy to .dev.vars for local development. Never commit real values.
+ADMIN_TOKEN=replace-with-a-long-random-value
+STUDY_EMAIL_TO=you@example.com
+STUDY_EMAIL_FROM=study@your-onboarded-domain.example

@@ -16,7 +16,6 @@ function localDateString(date = new Date()) {
 }
 
 function toDate(value: string) { return new Date(`${value}T12:00:00`); }
-function addDays(value: string, amount: number) { const d = toDate(value); d.setDate(d.getDate() + amount); return localDateString(d); }
 function formatKorean(value: string) { const d = toDate(value); return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 ${days[d.getDay()]}요일`; }
 
 function getWeek(value: string) {
@@ -52,6 +51,8 @@ export default function Home() {
     } finally { setLoading(false); }
   }, [selectedDate, week]);
 
+  // The fetch updates this client-side dashboard after the selected date changes.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void loadDashboard(); }, [loadDashboard]);
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(''), 3200); return () => clearTimeout(timer); }, [notice]);
 
