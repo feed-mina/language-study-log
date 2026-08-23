@@ -1,5 +1,6 @@
 import { deliverContentById, generateAndDeliver } from './content';
 import { ensureAutomationSchema, findAsset, insertAsset, listAssets, listContent } from './db';
+import { gmailConfigured } from './gmail';
 import { isContentKind, isDate, kstDate, type ContentKind, type ContentRow, type WorkerEnv } from './types';
 
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
@@ -173,8 +174,8 @@ export async function handleAutomationApi(request: Request, env: WorkerEnv): Pro
         ok: check?.ok === 1,
         service: 'language-study-log',
         time: new Date().toISOString(),
-        bindings: { d1: true, r2: Boolean(env.STUDY_ASSETS), ai: Boolean(env.AI), email: Boolean(env.EMAIL) },
-        configured: { email: Boolean(env.STUDY_EMAIL_TO?.trim() && env.STUDY_EMAIL_FROM?.trim()) },
+        bindings: { d1: true, r2: Boolean(env.STUDY_ASSETS), ai: Boolean(env.AI) },
+        configured: { email: gmailConfigured(env), emailProvider: 'gmail-api' },
       });
     }
     if (url.pathname === '/api/materials' && request.method === 'GET') return materials(url, env);

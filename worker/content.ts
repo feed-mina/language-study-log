@@ -7,6 +7,7 @@ import {
   listAssets,
   startAutomationRun,
 } from './db';
+import { gmailConfigured, sendGmailMessage, type GmailAttachment } from './gmail';
 import { extractJson, kstDate, kindFromCron, type ContentKind, type ContentRow, type StudyPayload, type WorkerEnv } from './types';
 
 export const CONTENT_MODEL = '@cf/zai-org/glm-4.7-flash';
@@ -90,7 +91,7 @@ async function sha256(value: string): Promise<string> {
 export async function deliverContent(env: WorkerEnv, content: ContentRow): Promise<{ sent: boolean; messageId?: string }> {
   const to = env.STUDY_EMAIL_TO?.trim();
   const from = env.STUDY_EMAIL_FROM?.trim();
-  if (!to || !from) throw new Error('STUDY_EMAIL_TO and STUDY_EMAIL_FROM must be configured');
+  if (!to || !from || !gmailConfigured(env)) throw new Error('Gmail email delivery must be configured');
 
   const recipientHash = await sha256(to.toLowerCase());
   const now = new Date().toISOString();
@@ -118,11 +119,10 @@ export async function deliverContent(env: WorkerEnv, content: ContentRow): Promi
   const siteUrl = (env.SITE_URL ?? '').replace(/\/$/, '');
   const assetRows = await listAssets(env, content.id);
   const audio = assetRows.find((asset) => asset.kind === 'speaking-audio' && asset.bytes <= 4 * 1024 * 1024);
-  const attachments: EmailAttachment[] = [];
+  const attachments: GmailAttachment[] = [];
   if (audio) {
     const object = await env.STUDY_ASSETS.get(audio.r2_key);
     if (object) attachments.push({
-      disposition: 'attachment',
       filename: audio.filename,
       type: audio.content_type,
       content: await object.arrayBuffer(),
@@ -135,9 +135,10 @@ export async function deliverContent(env: WorkerEnv, content: ContentRow): Promi
   const html = `<h1>${escapeHtml(payload.title)}</h1><p>${escapeHtml(payload.summary)}</p><ol>${htmlItems}</ol><p><a href="${escapeHtml(siteUrl)}">오늘 학습 기록하기</a></p>`;
 
   try {
-    const result = await env.EMAIL.send({
+    const result = await sendGmailMessage(env, {
       to,
-      from: { email: from, name: 'Language Study Log' },
+      from,
+      fromName: 'Language Study Log',
       subject: `[${content.content_date}] ${content.title}`,
       text,
       html,
@@ -159,7 +160,7 @@ export async function deliverContent(env: WorkerEnv, content: ContentRow): Promi
 export async function generateAndDeliver(env: WorkerEnv, date: string, kind: ContentKind, sendEmail = true): Promise<{ content: ContentRow; sent: boolean; messageId?: string }> {
   const content = await generateContent(env, date, kind);
   if (kind === 'english') await ensureEnglishAudio(env, content);
-  if (!sendEmail || !env.STUDY_EMAIL_TO?.trim() || !env.STUDY_EMAIL_FROM?.trim()) {
+  if (!sendEmail || !gmailConfigured(env)) {
     return { content, sent: false };
   }
   const delivery = await deliverContent(env, content);

@@ -2,20 +2,11 @@ export const CONTENT_KINDS = ['english', 'japanese', 'toeic'] as const;
 
 export type ContentKind = (typeof CONTENT_KINDS)[number];
 
-export interface WorkerEnv {
+export type WorkerEnv = Env & {
   ASSETS?: {
     fetch(request: Request): Promise<Response> | Response;
   };
-  DB: D1Database;
-  STUDY_ASSETS: R2Bucket;
-  AI: Ai;
-  EMAIL: SendEmail;
-  ADMIN_TOKEN?: string;
-  STUDY_EMAIL_TO?: string;
-  STUDY_EMAIL_FROM?: string;
-  SITE_URL?: string;
-  TIME_ZONE?: string;
-}
+};
 
 export interface StudyItem {
   prompt: string;

@@ -26,11 +26,6 @@
     "binding": "AI",
     "remote": true
   },
-  "send_email": [
-    {
-      "name": "EMAIL"
-    }
-  ],
   "triggers": {
     "crons": [
       "30 21 * * *",
