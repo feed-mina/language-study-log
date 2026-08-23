@@ -17,7 +17,7 @@ export const ENGLISH_TTS_MODEL = '@cf/deepgram/aura-2-en';
 const prompts: Record<ContentKind, (date: string) => string> = {
   english: (date) => `${date} 영어 아침 학습 자료를 한국인 중급 학습자용으로 작성하세요. 일상에서 바로 말할 수 있는 핵심 영어 문장 5개를 만들고, 첫 문장은 speakingSentence에도 그대로 넣으세요.`,
   japanese: (date) => `${date} 일본어 아침 학습 자료를 한국인 초중급 학습자용으로 작성하세요. 생활 일본어 문장 5개와 자연스러운 한국어 설명을 제공하세요.`,
-  toeic: (date) => `${date} TOEIC 학습 자료를 작성하세요. 월요일부터 토요일까지 사용할 수 있도록 LC 또는 RC 실전 문제 5개와 정답 및 간단한 오답 포인트를 제공하세요.`,
+  toeic: (date) => `${date} TOEIC 학습 자료를 작성하세요. 월요일부터 토요일까지 사용할 수 있도록 LC 또는 RC 실전 문제 5개와 정답 및 간단한 오답 포인트를 제공하세요. 각 문제는 반드시 items 배열의 prompt, answer, explanation에 넣고 items를 정확히 5개 반환하세요.`,
 };
 
 function systemPrompt(): string {
@@ -36,7 +36,9 @@ export async function generateContent(env: WorkerEnv, date: string, kind: Conten
       { role: 'user', content: prompts[kind](date) },
     ],
     temperature: 0.4,
-    max_tokens: 1800,
+    max_completion_tokens: 3200,
+    reasoning_effort: 'low',
+    response_format: { type: 'json_object' },
   });
   const payload = extractJson(response);
   const stored = await insertContent(env, date, kind, payload, CONTENT_MODEL);
@@ -59,11 +61,15 @@ export async function ensureEnglishAudio(env: WorkerEnv, content: ContentRow, pa
     { returnRawResponse: true },
   );
   if (!response.ok || !response.body) throw new Error(`TTS generation failed (${response.status})`);
+  const audio = await response.arrayBuffer();
+  if (audio.byteLength === 0 || audio.byteLength > 4 * 1024 * 1024) {
+    throw new Error('TTS audio must be between 1 byte and 4 MB');
+  }
 
   const id = crypto.randomUUID();
   const filename = `${content.content_date}-english-sentence.mp3`;
   const key = `generated/${content.content_date}/english/${id}.mp3`;
-  const object = await env.STUDY_ASSETS.put(key, response.body, {
+  const object = await env.STUDY_ASSETS.put(key, audio, {
     httpMetadata: { contentType: 'audio/mpeg', contentDisposition: `attachment; filename="${filename}"` },
     customMetadata: { contentId: content.id, kind: 'speaking-audio' },
   });

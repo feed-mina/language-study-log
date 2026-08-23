@@ -129,7 +129,26 @@ export function extractJson(value: unknown): StudyPayload {
   let candidate: unknown = value;
   if (value && typeof value === 'object') {
     const record = value as Record<string, unknown>;
-    if (typeof record.response === 'string') candidate = record.response;
+    if (typeof record.response === 'string' || (record.response && typeof record.response === 'object')) {
+      candidate = record.response;
+    } else if (Array.isArray(record.choices)) {
+      for (const choice of record.choices) {
+        if (!choice || typeof choice !== 'object') continue;
+        const choiceRecord = choice as Record<string, unknown>;
+        const message = choiceRecord.message;
+        if (message && typeof message === 'object') {
+          const content = (message as Record<string, unknown>).content;
+          if (typeof content === 'string') {
+            candidate = content;
+            break;
+          }
+        }
+        if (typeof choiceRecord.text === 'string') {
+          candidate = choiceRecord.text;
+          break;
+        }
+      }
+    }
   }
   if (typeof candidate === 'string') {
     const cleaned = candidate.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
