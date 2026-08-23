@@ -103,7 +103,7 @@ Sites를 통해 웹사이트를 배포했으며, 현재 공개 주소에서 접�
 - 운영 health, materials, 사이트 HTTP 응답 확인 완료
 - Cloudflare 계정에 DNS 도메인이 없어 Email Service 발신 도메인 등록은 보류
 - 이메일 비밀 값이 없을 때는 자료·MP3 생성과 D1/R2 저장만 실행하고 메일은 건너뛰도록 구성
-- GitHub에는 Cloudflare Account ID를 등록했으며, 자동 배포용 API Token은 아직 등록 전
+- GitHub에 Cloudflare Account ID와 API Token을 등록했고, Actions에서 D1 마이그레이션과 Worker 자동 배포 성공을 확인
 
 ## 현재 상태와 아직 구현되지 않은 부분
 
