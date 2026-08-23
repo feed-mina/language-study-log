@@ -13,6 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://toeic-daily-study-log.minyerin.chatgpt.site'),
   title: 'TOEIC Daily | 매일 공부 기록',
   description: '매일 TOEIC 학습 일정을 계획하고 공부 시간, 점수, 오답 메모를 차곡차곡 기록하세요.',
   openGraph: {
