@@ -27,11 +27,7 @@
     "remote": true
   },
   "triggers": {
-    "crons": [
-      "30 21 * * *",
-      "0 23 * * *",
-      "0 9 * * mon-sat"
-    ]
+    "crons": []
   },
   "observability": {
     "enabled": true,
