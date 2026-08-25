@@ -4,9 +4,76 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
 type StudyPlan = { id: string; planDate: string; category: string; title: string; detail: string; minutes: number; completed: number };
 type StudyLog = { id: string; studyDate: string; part: string; title: string; minutes: number; score: string; note: string; createdAt: string };
+type StudyItem = { prompt: string; answer: string; explanation: string };
+type StudyPayload = { title: string; summary: string; speakingSentence?: string; speakingMeaning?: string; items: StudyItem[] };
+type StudyAsset = { id: string; kind: string; filename: string; contentType: string; bytes: number; url: string };
+type StudyMaterial = {
+  id: string;
+  date: string;
+  kind: 'english' | 'japanese' | 'toeic';
+  title: string;
+  summary: string;
+  body: unknown;
+  status: string;
+  createdAt: string;
+  assets: StudyAsset[];
+};
 
 const days = ['일', '월', '화', '수', '목', '금', '토'];
-const categoryClass: Record<string, string> = { LC: 'coral', RC: 'green', VOCA: 'blue', TEST: 'purple' };
+const categoryClass: Record<string, string> = {
+  LC: 'coral',
+  RC: 'green',
+  VOCA: 'blue',
+  TEST: 'purple',
+  ENGLISH: 'blue',
+  JAPANESE: 'coral',
+  TOEIC: 'purple',
+};
+const categoryLabel: Record<string, string> = { ENGLISH: 'EN', JAPANESE: 'JP' };
+const materialKind: Record<StudyMaterial['kind'], { label: string; description: string; language: string }> = {
+  english: { label: '영어', description: 'English', language: 'en' },
+  japanese: { label: '일본어', description: 'Japanese', language: 'ja' },
+  toeic: { label: 'TOEIC', description: 'Test practice', language: 'en' },
+};
+const materialOrder: StudyMaterial['kind'][] = ['english', 'japanese', 'toeic'];
+const materialsApiOrigin = 'https://language-study-log.evolvix.workers.dev';
+
+function isString(value: unknown): value is string { return typeof value === 'string'; }
+
+function readPayload(value: unknown): StudyPayload | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (!isString(row.title) || !isString(row.summary) || !Array.isArray(row.items)) return null;
+  const items = row.items.filter((item): item is StudyItem => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+    const candidate = item as Record<string, unknown>;
+    return isString(candidate.prompt) && isString(candidate.answer) && isString(candidate.explanation);
+  });
+  if (items.length !== row.items.length || items.length === 0 || items.length > 12) return null;
+  const speakingSentence = isString(row.speakingSentence) && row.speakingSentence ? row.speakingSentence : undefined;
+  const speakingMeaning = isString(row.speakingMeaning) && row.speakingMeaning ? row.speakingMeaning : undefined;
+  return { title: row.title, summary: row.summary, speakingSentence, speakingMeaning, items };
+}
+
+function readMaterials(value: unknown): StudyMaterial[] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+  const materials = (value as Record<string, unknown>).materials;
+  if (!Array.isArray(materials)) return [];
+  return materials.filter((material): material is StudyMaterial => {
+    if (!material || typeof material !== 'object' || Array.isArray(material)) return false;
+    const row = material as Record<string, unknown>;
+    if (!isString(row.id) || !isString(row.date) || !isString(row.title) || !isString(row.summary)) return false;
+    if (!isString(row.status) || !isString(row.createdAt) || !materialOrder.includes(row.kind as StudyMaterial['kind'])) return false;
+    if (!Array.isArray(row.assets)) return false;
+    return row.assets.every((asset) => {
+      if (!asset || typeof asset !== 'object' || Array.isArray(asset)) return false;
+      const candidate = asset as Record<string, unknown>;
+      return isString(candidate.id) && isString(candidate.kind) && isString(candidate.filename)
+        && isString(candidate.contentType) && typeof candidate.bytes === 'number'
+        && isString(candidate.url) && /^\/api\/assets\/[a-f0-9-]+$/i.test(candidate.url);
+    });
+  }) as StudyMaterial[];
+}
 
 function localDateString(date = new Date()) {
   const y = date.getFullYear();
@@ -30,6 +97,7 @@ export default function Home() {
   const [selectedDate, setSelectedDate] = useState(today);
   const [plans, setPlans] = useState<StudyPlan[]>([]);
   const [logs, setLogs] = useState<StudyLog[]>([]);
+  const [materials, setMaterials] = useState<StudyMaterial[]>([]);
   const [completedDates, setCompletedDates] = useState<string[]>([]);
   const [modal, setModal] = useState<'log' | 'plan' | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,14 +108,42 @@ export default function Home() {
   const loadDashboard = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/dashboard?date=${selectedDate}&start=${week[0]}&end=${week[6]}`);
-      if (!response.ok) throw new Error('load failed');
-      const data = await response.json() as { plans: StudyPlan[]; logs: StudyLog[]; completedDates: string[] };
-      setPlans(data.plans);
-      setLogs(data.logs);
-      setCompletedDates(data.completedDates);
+      const [dashboardResult, materialsResult] = await Promise.allSettled([
+        fetch(`/api/dashboard?date=${selectedDate}&start=${week[0]}&end=${week[6]}`).then(async (response) => {
+          if (!response.ok) throw new Error('dashboard load failed');
+          return response.json() as Promise<{ plans: StudyPlan[]; logs: StudyLog[]; completedDates: string[] }>;
+        }),
+        fetch(`${materialsApiOrigin}/api/materials?date=${selectedDate}`).then(async (response) => {
+          if (!response.ok) throw new Error('materials load failed');
+          return response.json() as Promise<unknown>;
+        }),
+      ]);
+
+      if (dashboardResult.status === 'fulfilled') {
+        setPlans(dashboardResult.value.plans);
+        setLogs(dashboardResult.value.logs);
+        setCompletedDates(dashboardResult.value.completedDates);
+      } else {
+        setPlans([]);
+        setLogs([]);
+        setCompletedDates([]);
+      }
+
+      if (materialsResult.status === 'fulfilled') {
+        setMaterials(readMaterials(materialsResult.value));
+      } else {
+        setMaterials([]);
+      }
+
+      if (dashboardResult.status === 'rejected' && materialsResult.status === 'rejected') {
+        setNotice('학습 정보와 예약 자료를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.');
+      } else if (dashboardResult.status === 'rejected') {
+        setNotice('학습 기록을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.');
+      } else if (materialsResult.status === 'rejected') {
+        setNotice('예약 학습 자료를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.');
+      }
     } catch {
-      setNotice('기록을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.');
+      setNotice('학습 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.');
     } finally { setLoading(false); }
   }, [selectedDate, week]);
 
@@ -60,6 +156,7 @@ export default function Home() {
   const studiedThisWeek = new Set(completedDates).size;
   const weekPercent = Math.round((studiedThisWeek / 7) * 100);
   const totalMinutes = plans.reduce((sum, plan) => sum + plan.minutes, 0);
+  const sortedMaterials = [...materials].sort((a, b) => materialOrder.indexOf(a.kind) - materialOrder.indexOf(b.kind));
 
   async function submitForm(event: FormEvent<HTMLFormElement>, kind: 'log' | 'plan') {
     event.preventDefault();
@@ -120,7 +217,7 @@ export default function Home() {
             </div>
             {loading ? <div className="empty-state">일정을 불러오는 중...</div> : plans.length ? plans.map((plan) => (
               <button className={`plan-item ${plan.completed ? 'is-complete' : ''}`} key={plan.id} onClick={() => void togglePlan(plan)}>
-                <span className={`part-badge ${categoryClass[plan.category] ?? 'green'}`}>{plan.completed ? '✓' : plan.category}</span>
+                <span className={`part-badge ${categoryClass[plan.category] ?? 'green'}`}>{plan.completed ? '✓' : categoryLabel[plan.category] ?? plan.category}</span>
                 <div><strong>{plan.title}</strong><p>{plan.detail || '세부 메모 없음'}</p></div><span className="plan-time">{plan.minutes}분</span>
               </button>
             )) : <div className="empty-state"><strong>아직 예정된 공부가 없어요.</strong><span>＋ 일정 추가를 눌러 오늘의 계획을 만들어 보세요.</span></div>}
@@ -135,6 +232,61 @@ export default function Home() {
             <div className="today-summary"><strong>{selectedLogs.reduce((sum, log) => sum + log.minutes, 0)}</strong><span>분 기록됨</span><b>{selectedLogs.length}개 학습</b></div>
           </aside>
         </div>
+
+        <section className="materials-section" aria-labelledby="materials-title">
+          <div className="section-heading materials-heading">
+            <div><p className="mini-label">DAILY MATERIALS</p><h2 id="materials-title">예약 학습 자료</h2></div>
+            <p>{formatKorean(selectedDate)} 도착분</p>
+          </div>
+          {loading ? <div className="empty-state material-empty">예약 학습 자료를 불러오는 중...</div> : sortedMaterials.length ? (
+            <div className="materials-grid">
+              {sortedMaterials.map((material) => {
+                const meta = materialKind[material.kind];
+                const payload = readPayload(material.body);
+                const audioAssets = material.assets.filter((asset) => asset.contentType.startsWith('audio/'));
+                return (
+                  <article className={`material-card ${material.kind}`} key={material.id}>
+                    <header className="material-card-header">
+                      <div><span className="material-kind">{meta.label}</span><small>{meta.description}</small></div>
+                      <span className="material-count">{payload?.items.length ?? 0}개 학습</span>
+                    </header>
+                    <h3>{material.title}</h3>
+                    <p className="material-summary">{material.summary}</p>
+
+                    {payload?.speakingSentence && (
+                      <div className="speaking-block">
+                        <span>말하기 한 문장</span>
+                        <strong lang={meta.language}>{payload.speakingSentence}</strong>
+                        {payload.speakingMeaning && <p>{payload.speakingMeaning}</p>}
+                      </div>
+                    )}
+
+                    {audioAssets.map((asset) => (
+                      <figure className="material-audio" key={asset.id}>
+                        <figcaption>듣기 자료 · {asset.filename}</figcaption>
+                        <audio controls preload="none" src={new URL(asset.url, materialsApiOrigin).toString()}>오디오를 재생할 수 없는 브라우저입니다.</audio>
+                      </figure>
+                    ))}
+
+                    {payload?.items.length ? (
+                      <div className="material-items">
+                        {payload.items.map((item, index) => (
+                          <details className="material-item" key={`${material.id}-${index}`}>
+                            <summary><span>{String(index + 1).padStart(2, '0')}</span><strong lang={meta.language}>{item.prompt}</strong></summary>
+                            <div className="material-answer">
+                              <div><span>정답</span><p>{item.answer}</p></div>
+                              {item.explanation && <div><span>설명</span><p>{item.explanation}</p></div>}
+                            </div>
+                          </details>
+                        ))}
+                      </div>
+                    ) : <p className="material-unavailable">상세 학습 내용은 준비 중이에요.</p>}
+                  </article>
+                );
+              })}
+            </div>
+          ) : <div className="empty-state material-empty"><strong>이 날짜에 도착한 예약 학습 자료가 없어요.</strong><span>영어, 일본어, TOEIC 자료가 도착하면 여기에 모아 보여드려요.</span></div>}
+        </section>
 
         <section className="recent-section" aria-labelledby="recent-title">
           <div className="section-heading recent-heading"><div><p className="mini-label">STUDY LOG</p><h2 id="recent-title">최근 학습 기록</h2></div><button className="text-button" onClick={() => setModal('log')}>새 기록 ＋</button></div>

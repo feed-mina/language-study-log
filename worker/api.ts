@@ -1,4 +1,5 @@
 import { deliverContentById, generateAndDeliver, resolveTelegramChatId } from './content';
+import { withSiteCors } from './cors';
 import { ensureAutomationSchema, findAsset, insertAsset, listAssets, listContent, saveTelegramConnection } from './db';
 import { isReviewRating, listDueCards, publicStudyCard, reviewCard } from './review';
 import { getTelegramStart, sendTelegramStudy, telegramTokenConfigured } from './telegram';
@@ -230,12 +231,19 @@ export async function handleAutomationApi(request: Request, env: WorkerEnv): Pro
     if (url.pathname === '/api/telegram/status' && request.method === 'GET') {
       return json(await telegramConnectionStatus(env));
     }
-    if (url.pathname === '/api/telegram/connect' && request.method === 'POST') return connectTelegram(env);
-    if (url.pathname === '/api/materials' && request.method === 'GET') return materials(url, env);
+    if (url.pathname === '/api/telegram/connect' && request.method === 'POST') {
+      if (!(await authorized(request, env))) return errorResponse(401, 'UNAUTHORIZED', 'Valid Bearer token required');
+      return connectTelegram(env);
+    }
+    if (url.pathname === '/api/materials' && request.method === 'GET') {
+      return withSiteCors(await materials(url, env), request, env);
+    }
     if (url.pathname === '/api/reviews/due' && request.method === 'GET') return dueReviews(url, env);
 
     const assetMatch = url.pathname.match(/^\/api\/assets\/([a-f0-9-]+)$/i);
-    if (assetMatch && (request.method === 'GET' || request.method === 'HEAD')) return assetResponse(request, assetMatch[1], env);
+    if (assetMatch && (request.method === 'GET' || request.method === 'HEAD')) {
+      return withSiteCors(await assetResponse(request, assetMatch[1], env), request, env);
+    }
 
     if (url.pathname.startsWith('/api/admin/') && !(await authorized(request, env))) {
       return errorResponse(401, 'UNAUTHORIZED', 'Valid Bearer token required');

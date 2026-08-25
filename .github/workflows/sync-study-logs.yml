@@ -1,0 +1,111 @@
+name: Sync ChatGPT study logs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - study-logs/**
+  pull_request:
+    branches: [main]
+    paths:
+      - study-logs/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-and-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Collect canonical study logs
+        id: logs
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          changed="$RUNNER_TEMP/changed-files"
+          selected="$RUNNER_TEMP/study-log-files"
+          : > "$changed"
+          : > "$selected"
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            git ls-files -z -- 'study-logs/*/*/*/*.md' > "$selected"
+          else
+            base="$PUSH_BEFORE"
+            if [[ "$EVENT_NAME" == "pull_request" ]]; then
+              base="$PR_BASE"
+            fi
+            if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
+              base="$(git hash-object -t tree -w /dev/null)"
+            fi
+            echo "base_sha=$base" >> "$GITHUB_OUTPUT"
+            git diff --name-only -z "$base" "$HEAD_SHA" > "$changed"
+
+            invalid=0
+            while IFS= read -r -d '' path; do
+              case "$path" in
+                study-logs/[0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9]/english.md|\
+                study-logs/[0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9]/japanese.md|\
+                study-logs/[0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9]/toeic.md) ;;
+                *)
+                  echo "::error::Study-log commits must not include other paths: $path"
+                  invalid=1
+                  ;;
+              esac
+            done < "$changed"
+            if [[ "$invalid" -ne 0 ]]; then
+              exit 1
+            fi
+
+            git diff --name-only --diff-filter=AMR -z "$base" "$HEAD_SHA" -- 'study-logs/*/*/*/*.md' > "$selected"
+          fi
+
+          if [[ -s "$selected" ]]; then
+            echo "has_logs=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_logs=false" >> "$GITHUB_OUTPUT"
+            echo "No added or modified study logs to sync. Deleted files remain in D1 by design."
+          fi
+      - name: Validate study log format
+        if: steps.logs.outputs.has_logs == 'true'
+        env:
+          BASE_SHA: ${{ steps.logs.outputs.base_sha }}
+        run: |
+          mapfile -d '' files < "$RUNNER_TEMP/study-log-files"
+          node --experimental-strip-types scripts/study-log-to-sql.ts --check "${files[@]}"
+          if [[ -n "$BASE_SHA" ]]; then
+            node --experimental-strip-types scripts/study-log-to-sql.ts --check-owner "$BASE_SHA" "${files[@]}"
+          fi
+      - name: Install sync dependencies
+        if: steps.logs.outputs.has_logs == 'true' && github.event_name != 'pull_request'
+        run: npm ci
+      - name: Prepare D1 SQL
+        if: steps.logs.outputs.has_logs == 'true' && github.event_name != 'pull_request'
+        run: |
+          mapfile -d '' files < "$RUNNER_TEMP/study-log-files"
+          node --experimental-strip-types scripts/study-log-to-sql.ts "$RUNNER_TEMP/study-log-sync.sql" "${files[@]}"
+      - name: Upsert study logs into D1
+        if: steps.logs.outputs.has_logs == 'true' && github.event_name != 'pull_request'
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$CLOUDFLARE_ACCOUNT_ID" || -z "$CLOUDFLARE_API_TOKEN" ]]; then
+            echo "::error::Cloudflare Actions secrets are required for D1 sync."
+            exit 1
+          fi
+          sql_file="$RUNNER_TEMP/study-log-sync.sql"
+          trap 'rm -f "$sql_file"' EXIT
+          node node_modules/wrangler/bin/wrangler.js d1 execute language-study-log-db --remote --config wrangler.jsonc --file "$sql_file" --yes

@@ -1,25 +1,31 @@
 # Language Study Log
 
-영어·일본어·TOEIC 학습 자료를 정해진 시간에 생성해 Telegram으로 보내고, 학습 일정과 기록을 한 사이트에서 관리하는 Cloudflare Worker 앱입니다.
+ChatGPT 예약 작업이 만든 영어·일본어·TOEIC 학습 자료를 GitHub에 날짜별로 보관하고, D1과 학습 사이트에 자동 반영하는 Cloudflare Worker 앱입니다.
 
 ## 구성
 
 - Vinext/Next 화면과 API를 하나의 Cloudflare Worker로 배포
-- Cron Triggers로 매일 영어·일본어, 월–토 TOEIC 작업 실행
-- Workers AI로 학습 콘텐츠와 영어 한 문장 MP3 생성
+- ChatGPT 예약 작업으로 매일 영어·일본어, 월–토 TOEIC 자료 생성
+- `study-logs/YYYY/MM/DD/{kind}.md`에 사람이 읽는 본문과 검증용 JSON 보관
+- GitHub Actions가 학습 파일을 검증하고 기존 D1에 멱등 업서트
 - D1에 일정, 생성 콘텐츠, 파일 메타데이터, 발송 이력 저장
 - R2에 MP3, PDF, 이미지 저장
-- Telegram Bot으로 학습 본문과 영어 MP3 발송
+- 날짜를 선택하면 영어·일본어·TOEIC 전체 자료와 정답을 사이트에 표시
+- 수동 API로 Workers AI 생성 및 Telegram 발송 가능
 - FSRS로 카드별 다음 복습일 계산
-- `main` 브랜치 push 시 GitHub Actions가 검사 후 자동 배포
+- 소스 코드의 `main` push는 검사 후 Worker 배포, 학습 파일만 바뀐 push는 D1 동기화만 실행
 
-예약 시각은 Cloudflare Cron의 UTC 기준입니다.
+예약 작업의 기준 시간대는 `Asia/Seoul`입니다.
 
-| 학습 | 한국 시각 | Cron UTC |
+| 학습 | 한국 시각 | 파일명 |
 |---|---:|---|
-| 영어 | 매일 06:30 | `30 21 * * *` |
-| 일본어 | 매일 08:00 | `0 23 * * *` |
-| TOEIC | 월–토 18:00 | `0 9 * * mon-sat` |
+| 영어 | 매일 06:30 | `english.md` |
+| 일본어 | 매일 08:00 | `japanese.md` |
+| TOEIC | 월–토 18:00 | `toeic.md` |
+
+Cloudflare Cron은 같은 날짜의 자료를 중복 생성하지 않도록 비활성화했습니다. GitHub 보관 형식과 검증 규칙은 [`docs/chatgpt-study-sync.md`](docs/chatgpt-study-sync.md)에 정리되어 있습니다.
+
+GitHub Actions는 `wrangler.jsonc`에 연결된 Cloudflare D1을 갱신합니다. 소유자 전용 ChatGPT Sites 화면도 같은 자료를 보도록 공개 읽기 전용 Worker API(`language-study-log.evolvix.workers.dev`)를 사용하며, 해당 API는 설정된 Sites 출처에만 CORS 읽기를 허용합니다. 일정과 개인 학습 기록은 기존 Sites D1에 그대로 분리됩니다.
 
 ## API
 
@@ -33,6 +39,9 @@
 | `POST` | `/api/admin/send/:contentId` | 기존 자료 Telegram 재발송 | Bearer 토큰 |
 | `POST` | `/api/admin/reviews/:cardId` | 복습 평가 저장 | Bearer 토큰 |
 | `PUT` | `/api/admin/assets/:kind/:filename` | MP3/PDF/이미지 업로드(최대 20 MiB) | Bearer 토큰 |
+| `POST` | `/api/telegram/connect` | 최근 `/start` 사용자와 Telegram 연결 | Bearer 토큰 |
+
+학습 일정과 기록의 추가·완료·삭제는 소유자 전용 Sites 주소에서 인증된 요청만 허용합니다. 직접 노출된 Worker 주소에서는 조회만 가능합니다.
 
 자료 생성 예시:
 
@@ -75,7 +84,8 @@ npx wrangler secret put TELEGRAM_BOT_TOKEN
 5. 배포 후 아래 연결 API를 한 번 호출합니다. Worker는 Telegram에 보관된 가장 최근의 개인 `/start` 메시지를 확인하고 Chat ID를 D1에 저장한 뒤 확인 메시지를 발송합니다. Chat ID를 직접 복사하거나 별도 서비스에 제공할 필요가 없습니다.
 
 ```bash
-curl -X POST https://language-study-log.evolvix.workers.dev/api/telegram/connect
+curl -X POST https://language-study-log.evolvix.workers.dev/api/telegram/connect \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
 연결 상태는 `GET /api/telegram/status`에서 `token`, `connected` 불리언 값으로만 확인할 수 있습니다. 기존 `TELEGRAM_CHAT_ID` Secret은 필요한 경우 수동 대상 지정용 호환 옵션으로 계속 지원합니다.
@@ -85,9 +95,9 @@ curl -X POST https://language-study-log.evolvix.workers.dev/api/telegram/connect
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_API_TOKEN`
 
-설정 전에도 GitHub Actions의 린트·타입·빌드는 실행되며, Cloudflare 배포 단계만 안전하게 건너뜁니다.
+설정 전에도 GitHub Actions의 린트·타입·빌드는 실행되며, Cloudflare 배포 단계만 안전하게 건너뜁니다. 학습 파일 D1 동기화는 두 값이 없으면 실패하므로, 예약 작업을 연결하기 전에 설정해야 합니다.
 
-Telegram 비밀 값이 아직 없으면 예약 작업은 학습 자료와 영어 MP3를 생성해 D1/R2에 저장하고 Telegram 발송만 건너뜁니다.
+예약 작업 프롬프트에는 이 두 값이나 `ADMIN_TOKEN`을 넣지 않습니다. GitHub Actions만 저장소 Secret을 읽으며, 예약 작업은 공개 학습 Markdown 한 파일만 수정합니다.
 
 Telegram Bot API 참고 문서:
 

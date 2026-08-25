@@ -1,11 +1,22 @@
 import { env } from 'cloudflare:workers';
 
+import { isTrustedDashboardMutation } from './auth';
+
 export const runtime = 'edge';
 
 type Row = Record<string, string | number | null>;
 
 function db() {
   return (env as Cloudflare.Env & { DB: D1Database }).DB;
+}
+
+function canMutate(request: Request) {
+  const siteUrl = (env as Cloudflare.Env & { SITE_URL?: string }).SITE_URL;
+  return isTrustedDashboardMutation(request, siteUrl);
+}
+
+function unauthorized() {
+  return Response.json({ error: 'authenticated site access required' }, { status: 401 });
 }
 
 async function ensureSchema() {
@@ -39,30 +50,6 @@ async function ensureSchema() {
 function validDate(value: unknown): value is string { return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value); }
 function text(value: unknown, max: number) { return typeof value === 'string' ? value.trim().slice(0, max) : ''; }
 function minutes(value: unknown) { const number = Number(value); return Number.isFinite(number) ? Math.min(600, Math.max(1, Math.round(number))) : 1; }
-function relativeDate(value: string, amount: number) { const date = new Date(`${value}T12:00:00Z`); date.setUTCDate(date.getUTCDate() + amount); return date.toISOString().slice(0, 10); }
-
-async function seedIfEmpty(date: string) {
-  const database = db();
-  const planCount = await database.prepare('SELECT COUNT(*) AS total FROM study_plans').first<{ total: number }>();
-  const logCount = await database.prepare('SELECT COUNT(*) AS total FROM study_logs').first<{ total: number }>();
-  const now = new Date().toISOString();
-  const statements: D1PreparedStatement[] = [];
-  if (!planCount?.total) {
-    statements.push(
-      database.prepare('INSERT INTO study_plans (id, plan_date, category, title, detail, minutes, completed, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(crypto.randomUUID(), date, 'LC', 'Part 2 · 질의응답', '실전 문제 25개 + 오답 다시 듣기', 40, 0, now),
-      database.prepare('INSERT INTO study_plans (id, plan_date, category, title, detail, minutes, completed, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(crypto.randomUUID(), date, 'RC', 'Part 5 · 문법', '관계사 핵심 정리 + 문제 20개', 35, 0, now),
-    );
-  }
-  if (!logCount?.total) {
-    const samples = [
-      [relativeDate(date, -1), 'RC', '문법 오답 30문제', 45, '26 / 30', '관계대명사와 관계부사 구분 복습'],
-      [relativeDate(date, -2), 'LC', '대화문 집중 듣기', 60, '82%', '의도 파악 문제를 한 번 더 듣기'],
-      [relativeDate(date, -3), 'VOCA', '빈출 어휘 Day 12', 35, '48개', '헷갈린 단어 7개 표시'],
-    ];
-    for (const sample of samples) statements.push(database.prepare('INSERT INTO study_logs (id, study_date, part, title, minutes, score, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(crypto.randomUUID(), ...sample, now));
-  }
-  if (statements.length) await database.batch(statements);
-}
 
 export async function GET(request: Request) {
   await ensureSchema();
@@ -70,7 +57,6 @@ export async function GET(request: Request) {
   const date = validDate(url.searchParams.get('date')) ? url.searchParams.get('date')! : new Date().toISOString().slice(0, 10);
   const start = validDate(url.searchParams.get('start')) ? url.searchParams.get('start')! : date;
   const end = validDate(url.searchParams.get('end')) ? url.searchParams.get('end')! : date;
-  await seedIfEmpty(date);
   const database = db();
   const [plansResult, logsResult, datesResult] = await Promise.all([
     database.prepare('SELECT * FROM study_plans WHERE plan_date = ? ORDER BY created_at ASC').bind(date).all<Row>(),
@@ -86,6 +72,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (!canMutate(request)) return unauthorized();
   await ensureSchema();
   const body = await request.json() as Record<string, unknown>;
   const database = db();
@@ -101,6 +88,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  if (!canMutate(request)) return unauthorized();
   await ensureSchema();
   const body = await request.json() as Record<string, unknown>;
   const id = text(body.id, 80);
@@ -110,6 +98,7 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  if (!canMutate(request)) return unauthorized();
   await ensureSchema();
   const url = new URL(request.url);
   const id = text(url.searchParams.get('id'), 80);
