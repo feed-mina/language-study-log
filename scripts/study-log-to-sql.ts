@@ -14,7 +14,8 @@ import {
 const MAX_FILE_BYTES = 96 * 1024;
 const FRONTMATTER_KEYS = new Set(['date', 'kind', 'source', 'automation_id', 'generated_at']);
 const PAYLOAD_KEYS = new Set(['title', 'summary', 'speakingSentence', 'speakingMeaning', 'items']);
-const ITEM_KEYS = new Set(['prompt', 'answer', 'explanation']);
+const ITEM_KEYS = new Set(['prompt', 'options', 'answer', 'explanation']);
+const OPTION_KEYS = new Set(['label', 'text']);
 const EXPECTED_ITEMS: Record<ContentKind, number> = { english: 5, japanese: 5, toeic: 10 };
 const SENSITIVE_PATTERNS = [
   /\bghp_[A-Za-z0-9]{20,}\b/,
@@ -121,6 +122,17 @@ function validatePayload(path: string, kind: ContentKind, value: unknown): Study
     const itemRecord = item as Record<string, unknown>;
     if (!hasOnlyKeys(itemRecord, ITEM_KEYS)) fail(path, `items[${index}] contains an unsupported key`);
     assertSafeText(path, `items[${index}].prompt`, itemRecord.prompt, 500);
+    if (itemRecord.options !== undefined) {
+      if (!Array.isArray(itemRecord.options) || itemRecord.options.length !== 4) fail(path, `items[${index}].options must contain A, B, C, D`);
+      const labels = ['A', 'B', 'C', 'D'];
+      itemRecord.options.forEach((option, optionIndex) => {
+        if (!option || typeof option !== 'object' || Array.isArray(option)) fail(path, `items[${index}].options[${optionIndex}] must be an object`);
+        const optionRecord = option as Record<string, unknown>;
+        if (!hasOnlyKeys(optionRecord, OPTION_KEYS)) fail(path, `items[${index}].options[${optionIndex}] contains an unsupported key`);
+        if (optionRecord.label !== labels[optionIndex]) fail(path, `items[${index}].options labels must be A, B, C, D in order`);
+        assertSafeText(path, `items[${index}].options[${optionIndex}].text`, optionRecord.text, 240);
+      });
+    }
     assertSafeText(path, `items[${index}].answer`, itemRecord.answer, 1000);
     assertSafeText(path, `items[${index}].explanation`, itemRecord.explanation, 1000);
   });

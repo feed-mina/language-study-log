@@ -4,13 +4,14 @@ import test from 'node:test';
 
 import { buildStudyLogSql, parseStudyLog, sqlLiteral } from '../scripts/study-log-to-sql.ts';
 
-function studyLog(overrides: { date?: string; kind?: 'english' | 'japanese' | 'toeic'; source?: string; items?: number; title?: string } = {}) {
+function studyLog(overrides: { date?: string; kind?: 'english' | 'japanese' | 'toeic'; source?: string; items?: number; title?: string; structuredOptions?: boolean } = {}) {
   const date = overrides.date ?? '2026-08-25';
   const kind = overrides.kind ?? 'english';
   const itemCount = overrides.items ?? (kind === 'toeic' ? 10 : 5);
   const title = overrides.title ?? "Today's English";
   const items = Array.from({ length: itemCount }, (_, index) => ({
     prompt: `Prompt ${index + 1}`,
+    ...(overrides.structuredOptions ? { options: ['A', 'B', 'C', 'D'].map((label) => ({ label, text: `Choice ${label}` })) } : {}),
     answer: `Answer ${index + 1}`,
     explanation: `Explanation ${index + 1}`,
   }));
@@ -55,6 +56,14 @@ test('supports the ten-item TOEIC contract', () => {
   const parsed = parseStudyLog('study-logs/2026/08/25/toeic.md', studyLog({ kind: 'toeic' }));
   assert.equal(parsed.payload.items.length, 10);
   assert.equal(parsed.payload.speakingSentence, undefined);
+});
+
+test('accepts and preserves structured TOEIC A, B, C, D options', () => {
+  const parsed = parseStudyLog('study-logs/2026/08/25/toeic.md', studyLog({ kind: 'toeic', structuredOptions: true }));
+  assert.deepEqual(parsed.payload.items[0].options, [
+    { label: 'A', text: 'Choice A' }, { label: 'B', text: 'Choice B' },
+    { label: 'C', text: 'Choice C' }, { label: 'D', text: 'Choice D' },
+  ]);
 });
 
 test('rejects invalid dates and path/frontmatter mismatches', () => {

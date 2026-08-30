@@ -39,16 +39,22 @@ generated_at: "2026-08-25T06:30:00+09:00"
   "speakingMeaning": "마감일을 명확히 알려주시겠어요?",
   "items": [
     {
-      "prompt": "Could you clarify the deadline?",
-      "answer": "마감일을 명확히 알려주시겠어요?",
-      "explanation": "정중하게 확인을 요청하는 표현입니다."
+      "prompt": "The report must be submitted _____ Friday.",
+      "options": [
+        { "label": "A", "text": "by" },
+        { "label": "B", "text": "during" },
+        { "label": "C", "text": "among" },
+        { "label": "D", "text": "since" }
+      ],
+      "answer": "A. by",
+      "explanation": "마감 시점을 나타낼 때 by를 씁니다."
     }
   ]
 }
 ```
 ````
 
-실제 파일의 학습 항목 수는 영어 5개, 일본어 5개, TOEIC 10개입니다. 각 항목에는 `prompt`, `answer`, `explanation`이 모두 있어야 합니다. 동기화 전에 날짜, 경로, 필드 길이, JSON 형식과 일반적인 비밀 값 패턴을 검사합니다.
+실제 파일의 학습 항목 수는 영어 5개, 일본어 5개, TOEIC 10개입니다. 각 항목에는 `prompt`, `answer`, `explanation`이 모두 있어야 합니다. TOEIC 선택형 문제는 `options`에 A·B·C·D를 순서대로 분리합니다. 기존처럼 선택지가 `prompt`에 붙은 파일도 화면에서 안전하게 분리해 표시하지만, 새 파일은 구조화 형식을 사용합니다. 동기화 전에 날짜, 경로, 필드 길이, 선택지 순서, JSON 형식과 일반적인 비밀 값 패턴을 검사합니다.
 
 ## 자동 반영 흐름
 

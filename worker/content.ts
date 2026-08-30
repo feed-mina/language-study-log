@@ -17,12 +17,12 @@ export const ENGLISH_TTS_MODEL = '@cf/deepgram/aura-2-en';
 const prompts: Record<ContentKind, (date: string) => string> = {
   english: (date) => `${date} 영어 아침 학습 자료를 한국인 중급 학습자용으로 작성하세요. 일상에서 바로 말할 수 있는 핵심 영어 문장 5개를 만들고, 첫 문장은 speakingSentence에도 그대로 넣으세요.`,
   japanese: (date) => `${date} 일본어 아침 학습 자료를 한국인 초중급 학습자용으로 작성하세요. 생활 일본어 문장 5개와 자연스러운 한국어 설명을 제공하세요.`,
-  toeic: (date) => `${date} TOEIC 학습 자료를 작성하세요. 월요일부터 토요일까지 사용할 수 있도록 LC 또는 RC 실전 문제 5개와 정답 및 간단한 오답 포인트를 제공하세요. 각 문제는 반드시 items 배열의 prompt, answer, explanation에 넣고 items를 정확히 5개 반환하세요.`,
+  toeic: (date) => `${date} TOEIC 학습 자료를 작성하세요. 월요일부터 토요일까지 사용할 수 있도록 LC 또는 RC 실전 문제 5개를 만드세요. 각 문제는 prompt에 문제 본문만, options에 A·B·C·D 선택지를 각각 분리하고, answer와 explanation에 정답 및 간단한 오답 포인트를 넣으세요. items를 정확히 5개 반환하세요.`,
 };
 
 function systemPrompt(): string {
   return `당신은 정확하고 친절한 언어 학습 교사입니다. 반드시 JSON 객체 하나만 반환하세요.
-스키마: {"title":"string","summary":"string","speakingSentence":"string optional","speakingMeaning":"string optional","items":[{"prompt":"string","answer":"string","explanation":"string"}]}
+스키마: {"title":"string","summary":"string","speakingSentence":"string optional","speakingMeaning":"string optional","items":[{"prompt":"string","options":[{"label":"A","text":"string"},{"label":"B","text":"string"},{"label":"C","text":"string"},{"label":"D","text":"string"}],"answer":"string","explanation":"string"}]}
 마크다운 코드 펜스나 스키마 밖의 텍스트는 쓰지 마세요.`;
 }
 
@@ -140,7 +140,10 @@ export async function deliverContent(
     };
   }
 
-  const lines = payload.items.map((item, index) => `${index + 1}. ${item.prompt}\n정답: ${item.answer}\n설명: ${item.explanation}`);
+  const lines = payload.items.map((item, index) => {
+    const options = item.options?.map((option) => `${option.label}. ${option.text}`).join('\n');
+    return `${index + 1}. ${item.prompt}${options ? `\n${options}` : ''}\n정답: ${item.answer}\n설명: ${item.explanation}`;
+  });
   const text = `📚 ${payload.title}\n\n${payload.summary}\n\n${lines.join('\n\n')}`;
 
   try {

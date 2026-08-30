@@ -10,8 +10,14 @@ export type WorkerEnv = Env & {
 
 export interface StudyItem {
   prompt: string;
+  options?: StudyOption[];
   answer: string;
   explanation: string;
+}
+
+export interface StudyOption {
+  label: 'A' | 'B' | 'C' | 'D';
+  text: string;
 }
 
 export interface StudyPayload {
@@ -54,6 +60,7 @@ export interface StudyCardRow {
   prompt: string;
   answer: string;
   explanation: string;
+  options_json: string;
   source: string;
   due: string;
   stability: number;
@@ -101,14 +108,43 @@ function boundedText(value: unknown, max: number): string {
   return typeof value === 'string' ? value.trim().slice(0, max) : '';
 }
 
+const OPTION_LABELS = ['A', 'B', 'C', 'D'] as const;
+
+export function splitLegacyOptions(prompt: string): { prompt: string; options?: StudyOption[] } {
+  const match = prompt.match(/^([\s\S]*?)(?:\s+)A\.\s*([\s\S]*?)(?:\s+)B\.\s*([\s\S]*?)(?:\s+)C\.\s*([\s\S]*?)(?:\s+)D\.\s*([\s\S]+)$/);
+  if (!match) return { prompt };
+  const question = match[1].trim();
+  const optionTexts = match.slice(2).map((part) => part.trim());
+  if (!question || optionTexts.some((part) => !part)) return { prompt };
+  return {
+    prompt: question,
+    options: OPTION_LABELS.map((label, index) => ({ label, text: optionTexts[index] })),
+  };
+}
+
+function asOptions(value: unknown): StudyOption[] | undefined {
+  if (!Array.isArray(value) || value.length !== 4) return undefined;
+  const options = value.map((option, index) => {
+    if (!option || typeof option !== 'object' || Array.isArray(option)) return null;
+    const row = option as Record<string, unknown>;
+    const label = boundedText(row.label, 1);
+    const text = boundedText(row.text, 240);
+    if (label !== OPTION_LABELS[index] || !text) return null;
+    return { label: OPTION_LABELS[index], text };
+  });
+  return options.every((option): option is StudyOption => option !== null) ? options : undefined;
+}
+
 function asItem(value: unknown): StudyItem | null {
   if (!value || typeof value !== 'object') return null;
   const row = value as Record<string, unknown>;
-  const prompt = boundedText(row.prompt, 500);
+  const rawPrompt = boundedText(row.prompt, 1000);
   const answer = boundedText(row.answer, 1000);
   const explanation = boundedText(row.explanation, 1000);
-  if (!prompt || !answer) return null;
-  return { prompt, answer, explanation };
+  if (!rawPrompt || !answer) return null;
+  const structured = splitLegacyOptions(rawPrompt);
+  const options = asOptions(row.options) ?? structured.options;
+  return { prompt: options ? structured.prompt : rawPrompt, ...(options ? { options } : {}), answer, explanation };
 }
 
 export function parseStudyPayload(value: unknown): StudyPayload {

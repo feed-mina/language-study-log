@@ -8,6 +8,7 @@ export const studyPlans = sqliteTable('study_plans', {
   detail: text('detail').notNull().default(''),
   minutes: integer('minutes').notNull(),
   completed: integer('completed').notNull().default(0),
+  sourcePlanId: text('source_plan_id'),
   createdAt: text('created_at').notNull(),
 }, (table) => [index('idx_study_plans_date').on(table.planDate)]);
 
@@ -19,6 +20,10 @@ export const studyLogs = sqliteTable('study_logs', {
   minutes: integer('minutes').notNull(),
   score: text('score').notNull().default(''),
   note: text('note').notNull().default(''),
+  sourceType: text('source_type').notNull().default('legacy'),
+  sourceId: text('source_id'),
+  sourceLabel: text('source_label').notNull().default(''),
+  confusedItems: text('confused_items').notNull().default(''),
   createdAt: text('created_at').notNull(),
 }, (table) => [index('idx_study_logs_date').on(table.studyDate)]);
 
@@ -85,6 +90,7 @@ export const studyCards = sqliteTable('study_cards', {
   prompt: text('prompt').notNull(),
   answer: text('answer').notNull(),
   explanation: text('explanation').notNull().default(''),
+  optionsJson: text('options_json').notNull().default('[]'),
   source: text('source').notNull().default('generated'),
   due: text('due').notNull(),
   stability: real('stability').notNull().default(0),
@@ -126,3 +132,19 @@ export const telegramConnections = sqliteTable('telegram_connections', {
   connectedAt: text('connected_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 });
+
+export const studyGoals = sqliteTable('study_goals', {
+  id: text('id').primaryKey(),
+  targetScore: integer('target_score').notNull(),
+  examDate: text('exam_date').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+export const toeicScores = sqliteTable('toeic_scores', {
+  id: text('id').primaryKey(),
+  score: integer('score').notNull(),
+  scoreDate: text('score_date').notNull(),
+  scoreType: text('score_type').notNull(),
+  source: text('source').notNull().default(''),
+  createdAt: text('created_at').notNull(),
+}, (table) => [index('idx_toeic_scores_date').on(table.scoreDate, table.createdAt)]);

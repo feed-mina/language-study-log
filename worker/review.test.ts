@@ -21,6 +21,7 @@ test('scheduleReview moves a new card to a future FSRS review', () => {
     prompt: 'Could you clarify that point?',
     answer: '그 점을 명확히 설명해 주시겠어요?',
     explanation: '',
+    options_json: '[]',
     source: 'test',
     due: now.toISOString(),
     stability: 0,

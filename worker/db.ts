@@ -11,6 +11,7 @@ export async function ensureAutomationSchema(env: WorkerEnv): Promise<void> {
       detail TEXT NOT NULL DEFAULT '',
       minutes INTEGER NOT NULL,
       completed INTEGER NOT NULL DEFAULT 0,
+      source_plan_id TEXT,
       created_at TEXT NOT NULL
     )`),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_study_plans_date ON study_plans(plan_date)'),
@@ -71,6 +72,7 @@ export async function ensureAutomationSchema(env: WorkerEnv): Promise<void> {
       prompt TEXT NOT NULL,
       answer TEXT NOT NULL,
       explanation TEXT NOT NULL DEFAULT '',
+      options_json TEXT NOT NULL DEFAULT '[]',
       source TEXT NOT NULL DEFAULT 'generated',
       due TEXT NOT NULL,
       stability REAL NOT NULL DEFAULT 0,
@@ -108,6 +110,21 @@ export async function ensureAutomationSchema(env: WorkerEnv): Promise<void> {
       connected_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS study_goals (
+      id TEXT PRIMARY KEY,
+      target_score INTEGER NOT NULL,
+      exam_date TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS toeic_scores (
+      id TEXT PRIMARY KEY,
+      score INTEGER NOT NULL,
+      score_date TEXT NOT NULL,
+      score_type TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL
+    )`),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_toeic_scores_date ON toeic_scores(score_date, created_at)'),
   ]);
 }
 
@@ -172,9 +189,9 @@ export async function insertContent(
 
   const newCard = createEmptyCard(new Date(now));
   const cardStatements = payload.items.map((item, index) => env.DB.prepare(`INSERT OR IGNORE INTO study_cards
-    (id, content_id, language, category, prompt, answer, explanation, source, due, stability, difficulty,
+    (id, content_id, language, category, prompt, answer, explanation, options_json, source, due, stability, difficulty,
      elapsed_days, scheduled_days, learning_steps, reps, lapses, state, last_review, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'generated', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'generated', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(
       `card:${stored.id}:${index + 1}`,
       stored.id,
@@ -183,6 +200,7 @@ export async function insertContent(
       item.prompt,
       item.answer,
       item.explanation,
+      JSON.stringify(item.options ?? []),
       newCard.due.toISOString(),
       newCard.stability,
       newCard.difficulty,
