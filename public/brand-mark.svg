@@ -1,4 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Language Study Log</title>
+  <desc id="desc">책과 코랄색 책갈피를 담은 학습 기록 로고</desc>
   <rect x="2" y="2" width="60" height="60" rx="18" fill="#275d4c"/>
   <path d="M13 18.5c8.7-1.7 15.1.5 19 6.2v25.1c-4.6-4.6-10.9-6.4-19-4.7V18.5Z" fill="#fffefb"/>
   <path d="M51 18.5c-8.7-1.7-15.1.5-19 6.2v25.1c4.6-4.6 10.9-6.4 19-4.7V18.5Z" fill="#f5f1e8"/>

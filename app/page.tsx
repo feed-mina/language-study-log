@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
 import { dDay, getWeek, kstToday, shiftDate, splitLegacyQuestion, toLocalDate, weekLabel, type StudyOption } from './dashboard-utils';
@@ -244,7 +245,7 @@ export default function Home() {
   return (
     <main className="app-shell">
       <nav className="topbar">
-        <a className="brand" href="#top" aria-label="Language Study Log 홈"><span className="brand-mark">L</span><span>Language Study Log</span></a>
+        <a className="brand" href="#top" aria-label="Language Study Log 홈"><Image className="brand-mark" src="/brand-mark.svg" alt="" width={34} height={34} priority /><span>Language Study Log</span></a>
         <div className="nav-actions">
           <span className="streak-pill"><span>🔥</span> 이번 주 {studiedThisWeek}일</span>
           {authState === 'authenticated'
