@@ -27,7 +27,7 @@ tags:
 
 ## 현재 확인할 수 있는 결과물
 
-- 운영 사이트: <https://toeic-daily-study-log.minyerin.chatgpt.site/>
+- 운영 Worker: <https://language-study-log.evolvix.workers.dev/>
 - GitHub 저장소: <https://github.com/feed-mina/language-study-log>
 - 기본 브랜치: `main`
 - 구현 이력: GitHub `main` 브랜치의 커밋 기록에서 확인

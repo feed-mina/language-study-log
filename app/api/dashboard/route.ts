@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers';
 
-import { isTrustedDashboardMutation } from './auth';
+import { isAuthorizedDashboardMutation } from './auth';
 
 export const runtime = 'edge';
 
@@ -11,12 +11,12 @@ function db() {
 }
 
 function canMutate(request: Request) {
-  const siteUrl = (env as Cloudflare.Env & { SITE_URL?: string }).SITE_URL;
-  return isTrustedDashboardMutation(request, siteUrl);
+  const adminToken = (env as Cloudflare.Env & { ADMIN_TOKEN?: string }).ADMIN_TOKEN;
+  return isAuthorizedDashboardMutation(request, adminToken);
 }
 
 function unauthorized() {
-  return Response.json({ error: 'authenticated site access required' }, { status: 401 });
+  return Response.json({ error: 'administrator login required' }, { status: 401, headers: { 'cache-control': 'no-store' } });
 }
 
 async function ensureSchema() {
@@ -76,7 +76,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  if (!canMutate(request)) return unauthorized();
+  if (!(await canMutate(request))) return unauthorized();
   await ensureSchema();
   const body = await request.json() as Record<string, unknown>;
   const database = db();
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  if (!canMutate(request)) return unauthorized();
+  if (!(await canMutate(request))) return unauthorized();
   await ensureSchema();
   const body = await request.json() as Record<string, unknown>;
   const id = text(body.id, 80);
@@ -107,7 +107,7 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  if (!canMutate(request)) return unauthorized();
+  if (!(await canMutate(request))) return unauthorized();
   await ensureSchema();
   const url = new URL(request.url);
   const id = text(url.searchParams.get('id'), 80);

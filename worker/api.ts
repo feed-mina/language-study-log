@@ -1,3 +1,4 @@
+import { bearerToken, verifyAdminToken } from '../app/api/dashboard/auth';
 import { deliverContentById, generateAndDeliver, resolveTelegramChatId } from './content';
 import { withSiteCors } from './cors';
 import { ensureAutomationSchema, findAsset, insertAsset, listAssets, listContent, saveTelegramConnection } from './db';
@@ -26,21 +27,7 @@ function errorResponse(status: number, code: string, message: string): Response 
 }
 
 async function authorized(request: Request, env: WorkerEnv): Promise<boolean> {
-  const expected = env.ADMIN_TOKEN;
-  const authorization = request.headers.get('authorization');
-  if (!expected || !authorization?.startsWith('Bearer ')) return false;
-  const supplied = authorization.slice(7);
-  const [expectedHash, suppliedHash] = await Promise.all([
-    crypto.subtle.digest('SHA-256', new TextEncoder().encode(expected)),
-    crypto.subtle.digest('SHA-256', new TextEncoder().encode(supplied)),
-  ]);
-  const expectedBytes = new Uint8Array(expectedHash);
-  const suppliedBytes = new Uint8Array(suppliedHash);
-  let difference = 0;
-  for (let index = 0; index < expectedBytes.length; index += 1) {
-    difference |= expectedBytes[index] ^ suppliedBytes[index];
-  }
-  return difference === 0;
+  return verifyAdminToken(bearerToken(request), env.ADMIN_TOKEN);
 }
 
 function publicContent(row: ContentRow, assets: Awaited<ReturnType<typeof listAssets>>) {
@@ -225,7 +212,7 @@ export async function handleAutomationApi(request: Request, env: WorkerEnv): Pro
         service: 'language-study-log',
         time: new Date().toISOString(),
         bindings: { d1: true, r2: Boolean(env.STUDY_ASSETS), ai: Boolean(env.AI) },
-        configured: { telegram: telegram.token && telegram.connected, telegramToken: telegram.token, telegramChat: telegram.connected, deliveryProvider: 'telegram-bot' },
+        configured: { adminToken: Boolean(env.ADMIN_TOKEN), telegram: telegram.token && telegram.connected, telegramToken: telegram.token, telegramChat: telegram.connected, deliveryProvider: 'telegram-bot' },
       });
     }
     if (url.pathname === '/api/telegram/status' && request.method === 'GET') {

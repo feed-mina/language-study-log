@@ -6,7 +6,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
     "TIME_ZONE": "Asia/Seoul",
-    "SITE_URL": "https://toeic-daily-study-log.minyerin.chatgpt.site"
+    "SITE_URL": "https://language-study-log.evolvix.workers.dev"
   },
   "d1_databases": [
     {

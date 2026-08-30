@@ -18,6 +18,7 @@ type StudyMaterial = {
   createdAt: string;
   assets: StudyAsset[];
 };
+type AuthState = 'checking' | 'guest' | 'authenticated';
 
 const days = ['일', '월', '화', '수', '목', '금', '토'];
 const categoryClass: Record<string, string> = {
@@ -104,6 +105,10 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
+  const [authState, setAuthState] = useState<AuthState>('checking');
+  const [authModal, setAuthModal] = useState(false);
+  const [adminToken, setAdminToken] = useState('');
+  const [authenticating, setAuthenticating] = useState(false);
   const week = useMemo(() => getWeek(selectedDate), [selectedDate]);
 
   const loadDashboard = useCallback(async () => {
@@ -153,6 +158,14 @@ export default function Home() {
   // The fetch updates this client-side dashboard after the selected date changes.
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void loadDashboard(); }, [loadDashboard]);
+  useEffect(() => {
+    let active = true;
+    void fetch('/api/dashboard/session', { cache: 'no-store' })
+      .then(async (response) => response.ok ? response.json() as Promise<{ authenticated?: boolean }> : { authenticated: false })
+      .then((result) => { if (active) setAuthState(result.authenticated ? 'authenticated' : 'guest'); })
+      .catch(() => { if (active) setAuthState('guest'); });
+    return () => { active = false; };
+  }, []);
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(''), 3200); return () => clearTimeout(timer); }, [notice]);
 
   const selectedLogs = logs.filter((log) => log.studyDate === selectedDate);
@@ -161,13 +174,64 @@ export default function Home() {
   const totalMinutes = plans.reduce((sum, plan) => sum + plan.minutes, 0);
   const sortedMaterials = [...materials].sort((a, b) => materialOrder.indexOf(a.kind) - materialOrder.indexOf(b.kind));
 
+  function requireAdmin(): boolean {
+    if (authState === 'authenticated') return true;
+    setAuthModal(true);
+    setNotice(authState === 'checking' ? '관리자 인증 상태를 확인하고 있어요.' : '수정하려면 관리자 로그인이 필요해요.');
+    return false;
+  }
+
+  function openEditor(kind: 'log' | 'plan') {
+    if (requireAdmin()) setModal(kind);
+  }
+
+  function handleUnauthorized(response: Response): boolean {
+    if (response.status !== 401) return false;
+    setAuthState('guest');
+    setModal(null);
+    setAuthModal(true);
+    setNotice('로그인 시간이 끝났어요. 다시 로그인해 주세요.');
+    return true;
+  }
+
+  async function login(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAuthenticating(true);
+    try {
+      const response = await fetch('/api/dashboard/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: adminToken }),
+      });
+      if (!response.ok) throw new Error('login failed');
+      setAdminToken('');
+      setAuthState('authenticated');
+      setAuthModal(false);
+      setNotice('관리자 모드가 열렸어요. 이제 기록을 수정할 수 있어요.');
+    } catch {
+      setNotice('관리자 토큰이 맞지 않거나 로그인을 처리하지 못했어요.');
+    } finally {
+      setAuthenticating(false);
+    }
+  }
+
+  async function logout() {
+    await fetch('/api/dashboard/session', { method: 'DELETE' }).catch(() => undefined);
+    setAuthState('guest');
+    setModal(null);
+    setNotice('관리자 모드를 닫았어요.');
+  }
+
   async function submitForm(event: FormEvent<HTMLFormElement>, kind: 'log' | 'plan') {
     event.preventDefault();
     setSaving(true);
     const values = Object.fromEntries(new FormData(event.currentTarget).entries());
     try {
       const response = await fetch('/api/dashboard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, ...values }) });
-      if (!response.ok) throw new Error('save failed');
+      if (!response.ok) {
+        if (handleUnauthorized(response)) return;
+        throw new Error('save failed');
+      }
       setModal(null);
       setNotice(kind === 'log' ? '오늘의 공부 기록을 저장했어요.' : '학습 일정을 추가했어요.');
       await loadDashboard();
@@ -176,11 +240,14 @@ export default function Home() {
   }
 
   async function togglePlan(plan: StudyPlan) {
+    if (!requireAdmin()) return;
     const response = await fetch('/api/dashboard', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: plan.id, completed: plan.completed ? 0 : 1 }) });
     if (response.ok) { setNotice(plan.completed ? '완료 표시를 취소했어요.' : '학습을 완료했어요!'); await loadDashboard(); }
+    else if (!handleUnauthorized(response)) setNotice('완료 상태를 바꾸지 못했어요. 잠시 후 다시 시도해 주세요.');
   }
 
   async function reschedulePlan(plan: StudyPlan) {
+    if (!requireAdmin()) return;
     const response = await fetch('/api/dashboard', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -189,19 +256,28 @@ export default function Home() {
     if (response.ok) {
       setNotice(`${plan.title} 일정을 이 날짜로 옮겼어요.`);
       await loadDashboard();
-    } else setNotice('일정을 옮기지 못했어요. 잠시 후 다시 시도해 주세요.');
+    } else if (!handleUnauthorized(response)) setNotice('일정을 옮기지 못했어요. 잠시 후 다시 시도해 주세요.');
   }
 
   async function deleteLog(id: string) {
+    if (!requireAdmin()) return;
     const response = await fetch(`/api/dashboard?id=${encodeURIComponent(id)}&kind=log`, { method: 'DELETE' });
     if (response.ok) { setNotice('기록을 삭제했어요.'); await loadDashboard(); }
+    else if (!handleUnauthorized(response)) setNotice('기록을 삭제하지 못했어요. 잠시 후 다시 시도해 주세요.');
+  }
+
+  async function deletePlan(id: string) {
+    if (!requireAdmin()) return;
+    const response = await fetch(`/api/dashboard?id=${encodeURIComponent(id)}&kind=plan`, { method: 'DELETE' });
+    if (response.ok) { setNotice('일정을 삭제했어요.'); await loadDashboard(); }
+    else if (!handleUnauthorized(response)) setNotice('일정을 삭제하지 못했어요. 잠시 후 다시 시도해 주세요.');
   }
 
   return (
     <main className="app-shell">
       <nav className="topbar">
         <a className="brand" href="#top" aria-label="TOEIC Daily 홈"><span className="brand-mark">T</span><span>TOEIC Daily</span></a>
-        <div className="nav-actions"><span className="streak-pill"><span>🔥</span> 이번 주 {studiedThisWeek}일</span><button className="icon-button" aria-label="오늘로 이동" onClick={() => setSelectedDate(today)}>오늘</button></div>
+        <div className="nav-actions"><span className="streak-pill"><span>🔥</span> 이번 주 {studiedThisWeek}일</span><button className="admin-button" onClick={() => authState === 'authenticated' ? void logout() : setAuthModal(true)}>{authState === 'authenticated' ? '편집 종료' : '관리자 로그인'}</button><button className="icon-button" aria-label="오늘로 이동" onClick={() => setSelectedDate(today)}>오늘</button></div>
       </nav>
 
       <div className="dashboard" id="top">
@@ -249,16 +325,19 @@ export default function Home() {
           <section className="today-card" aria-labelledby="today-title">
             <div className="card-title-row">
               <div><p className="mini-label">DAILY PLAN</p><h2 id="today-title">{selectedDate === today ? '오늘의 학습' : `${toDate(selectedDate).getMonth() + 1}월 ${toDate(selectedDate).getDate()}일 학습`}</h2></div>
-              <button className="time-badge add-plan" onClick={() => setModal('plan')}>＋ 일정 추가</button>
+              <button className="time-badge add-plan" onClick={() => openEditor('plan')}>＋ 일정 추가</button>
             </div>
             {loading ? <div className="empty-state">일정을 불러오는 중...</div> : plans.length ? plans.map((plan) => (
-              <button className={`plan-item ${plan.completed ? 'is-complete' : ''}`} key={plan.id} onClick={() => void togglePlan(plan)}>
-                <span className={`part-badge ${categoryClass[plan.category] ?? 'green'}`}>{plan.completed ? '✓' : categoryLabel[plan.category] ?? plan.category}</span>
-                <div><strong>{plan.title}</strong><p>{plan.detail || '세부 메모 없음'}</p></div><span className="plan-time">{plan.minutes}분</span>
-              </button>
+              <article className="plan-row" key={plan.id}>
+                <button className={`plan-item ${plan.completed ? 'is-complete' : ''}`} onClick={() => void togglePlan(plan)}>
+                  <span className={`part-badge ${categoryClass[plan.category] ?? 'green'}`}>{plan.completed ? '✓' : categoryLabel[plan.category] ?? plan.category}</span>
+                  <div><strong>{plan.title}</strong><p>{plan.detail || '세부 메모 없음'}</p></div><span className="plan-time">{plan.minutes}분</span>
+                </button>
+                <button className="delete-button plan-delete" onClick={() => void deletePlan(plan.id)} aria-label={`${plan.title} 일정 삭제`}>×</button>
+              </article>
             )) : <div className="empty-state"><strong>아직 예정된 공부가 없어요.</strong><span>＋ 일정 추가를 눌러 오늘의 계획을 만들어 보세요.</span></div>}
             <div className="plan-footer"><span>예상 {totalMinutes}분</span><span>완료 {plans.filter((p) => p.completed).length}/{plans.length}</span></div>
-            <button className="primary-button" onClick={() => setModal('log')}><span>＋</span> 이 날짜의 공부 기록하기</button>
+            <button className="primary-button" onClick={() => openEditor('log')}><span>＋</span> 이 날짜의 공부 기록하기</button>
           </section>
 
           <aside className="score-card" aria-labelledby="goal-title">
@@ -325,7 +404,7 @@ export default function Home() {
         </section>
 
         <section className="recent-section" aria-labelledby="recent-title">
-          <div className="section-heading recent-heading"><div><p className="mini-label">STUDY LOG</p><h2 id="recent-title">최근 학습 기록</h2></div><button className="text-button" onClick={() => setModal('log')}>새 기록 ＋</button></div>
+          <div className="section-heading recent-heading"><div><p className="mini-label">STUDY LOG</p><h2 id="recent-title">최근 학습 기록</h2></div><button className="text-button" onClick={() => openEditor('log')}>새 기록 ＋</button></div>
           <div className="log-list">
             {loading ? <div className="empty-state compact">기록을 불러오는 중...</div> : logs.length ? logs.map((log) => (
               <article className="log-row" key={log.id}>
@@ -350,6 +429,17 @@ export default function Home() {
             <div className="form-grid"><label>예정 날짜<input name="planDate" type="date" defaultValue={selectedDate} required /></label><label>분류<select name="category" defaultValue="LC"><option>LC</option><option>RC</option><option>VOCA</option><option>TEST</option></select></label></div>
             <label>학습 제목<input name="title" placeholder="예: Part 5 관계사 핵심 정리" required maxLength={80} /></label><label>세부 계획<input name="detail" placeholder="예: 개념 복습 + 실전 문제 20개" maxLength={120} /></label><label>예상 시간 (분)<input name="minutes" type="number" min="1" max="600" defaultValue="40" required /></label><button className="primary-button modal-submit" disabled={saving}>{saving ? '저장 중...' : '일정 추가하기'}</button>
           </form>}
+        </section>
+      </div>}
+      {authModal && <div className="modal-backdrop" onMouseDown={(e) => { if (e.currentTarget === e.target) setAuthModal(false); }}>
+        <section className="modal auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+          <button className="modal-close" onClick={() => setAuthModal(false)} aria-label="닫기">×</button>
+          <p className="mini-label">OWNER ACCESS</p><h2 id="auth-title">관리자 로그인</h2>
+          <p className="modal-copy">일정과 학습 기록을 추가·완료·이동·삭제할 때만 필요합니다. 토큰 원문은 브라우저에 저장하지 않아요.</p>
+          <form onSubmit={(event) => void login(event)}>
+            <label>관리자 토큰<input type="password" value={adminToken} onChange={(event) => setAdminToken(event.target.value)} autoComplete="current-password" required maxLength={1024} /></label>
+            <button className="primary-button modal-submit" disabled={authenticating}>{authenticating ? '확인 중...' : '관리자 모드 열기'}</button>
+          </form>
         </section>
       </div>}
       {notice && <div className="toast" role="status">{notice}</div>}

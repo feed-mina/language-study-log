@@ -4,7 +4,7 @@ import test from 'node:test';
 import { withSiteCors } from './cors.ts';
 import type { WorkerEnv } from './types.ts';
 
-const siteOrigin = 'https://toeic-daily-study-log.minyerin.chatgpt.site';
+const siteOrigin = 'https://language-study-log.evolvix.workers.dev';
 const env = { SITE_URL: siteOrigin } as WorkerEnv;
 
 test('materials responses allow only the configured Sites origin', async () => {

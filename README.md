@@ -26,7 +26,7 @@ ChatGPT 예약 작업이 만든 영어·일본어·TOEIC 학습 자료를 GitHub
 
 Cloudflare Cron은 같은 날짜의 자료를 중복 생성하지 않도록 비활성화했습니다. GitHub 보관 형식과 검증 규칙은 [`docs/chatgpt-study-sync.md`](docs/chatgpt-study-sync.md)에 정리되어 있습니다.
 
-GitHub Actions는 `wrangler.jsonc`에 연결된 Cloudflare D1을 갱신합니다. 소유자 전용 ChatGPT Sites 화면도 같은 자료를 보도록 공개 읽기 전용 Worker API(`language-study-log.evolvix.workers.dev`)를 사용하며, 해당 API는 설정된 Sites 출처에만 CORS 읽기를 허용합니다. 일정과 개인 학습 기록은 기존 Sites D1에 그대로 분리됩니다.
+GitHub Actions는 `wrangler.jsonc`에 연결된 Cloudflare D1을 갱신합니다. 화면과 API는 모두 `language-study-log.evolvix.workers.dev` Worker에서 제공합니다. 자료 조회는 공개하고, 일정과 개인 학습 기록의 추가·완료·이동·삭제는 관리자 로그인 또는 Bearer 토큰으로 보호합니다.
 
 ## API
 
@@ -36,13 +36,16 @@ GitHub Actions는 `wrangler.jsonc`에 연결된 Cloudflare D1을 갱신합니다
 | `GET` | `/api/materials?date=YYYY-MM-DD&kind=english` | 날짜별 생성 자료 조회 | 없음 |
 | `GET`, `HEAD` | `/api/assets/:id` | R2 파일 조회 | 없음 |
 | `GET` | `/api/reviews/due?language=english&limit=20` | 오늘 복습할 카드 조회 | 없음 |
+| `GET` | `/api/dashboard` | 일정과 개인 학습 기록 조회 | 없음 |
+| `POST`, `PATCH`, `DELETE` | `/api/dashboard` | 일정과 개인 학습 기록 추가·변경·삭제 | 관리자 세션 또는 Bearer 토큰 |
+| `GET`, `POST`, `DELETE` | `/api/dashboard/session` | 관리자 세션 확인·로그인·로그아웃 | 로그인 시 `ADMIN_TOKEN` |
 | `POST` | `/api/admin/generate` | 자료 생성 및 선택적 Telegram 발송 | Bearer 토큰 |
 | `POST` | `/api/admin/send/:contentId` | 기존 자료 Telegram 재발송 | Bearer 토큰 |
 | `POST` | `/api/admin/reviews/:cardId` | 복습 평가 저장 | Bearer 토큰 |
 | `PUT` | `/api/admin/assets/:kind/:filename` | MP3/PDF/이미지 업로드(최대 20 MiB) | Bearer 토큰 |
 | `POST` | `/api/telegram/connect` | 최근 `/start` 사용자와 Telegram 연결 | Bearer 토큰 |
 
-학습 일정과 기록의 추가·완료·삭제는 소유자 전용 Sites 주소에서 인증된 요청만 허용합니다. 직접 노출된 Worker 주소에서는 조회만 가능합니다.
+브라우저에서는 상단의 `관리자 로그인`에 `ADMIN_TOKEN`을 입력합니다. 성공하면 12시간 동안 서명된 `HttpOnly` 쿠키로 편집할 수 있으며 토큰 원문은 브라우저 저장소에 보관하지 않습니다. 자동화나 명령줄에서는 기존과 같이 `Authorization: Bearer $ADMIN_TOKEN`을 사용할 수 있습니다.
 
 ## 놓친 예약을 관리하는 방식
 
