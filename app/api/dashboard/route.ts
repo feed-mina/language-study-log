@@ -58,14 +58,18 @@ export async function GET(request: Request) {
   const start = validDate(url.searchParams.get('start')) ? url.searchParams.get('start')! : date;
   const end = validDate(url.searchParams.get('end')) ? url.searchParams.get('end')! : date;
   const database = db();
-  const [plansResult, logsResult, datesResult] = await Promise.all([
+  const [plansResult, overdueResult, logsResult, datesResult] = await Promise.all([
     database.prepare('SELECT * FROM study_plans WHERE plan_date = ? ORDER BY created_at ASC').bind(date).all<Row>(),
+    database.prepare(`SELECT * FROM study_plans
+      WHERE plan_date < ? AND completed = 0
+      ORDER BY plan_date DESC, created_at ASC LIMIT 7`).bind(date).all<Row>(),
     database.prepare('SELECT * FROM study_logs ORDER BY study_date DESC, created_at DESC LIMIT 30').all<Row>(),
     database.prepare(`SELECT study_date AS date FROM study_logs WHERE study_date BETWEEN ? AND ?
       UNION SELECT plan_date AS date FROM study_plans WHERE completed = 1 AND plan_date BETWEEN ? AND ?`).bind(start, end, start, end).all<{ date: string }>(),
   ]);
   return Response.json({
     plans: (plansResult.results ?? []).map((row) => ({ id: row.id, planDate: row.plan_date, category: row.category, title: row.title, detail: row.detail, minutes: row.minutes, completed: row.completed })),
+    overduePlans: (overdueResult.results ?? []).map((row) => ({ id: row.id, planDate: row.plan_date, category: row.category, title: row.title, detail: row.detail, minutes: row.minutes, completed: row.completed })),
     logs: (logsResult.results ?? []).map((row) => ({ id: row.id, studyDate: row.study_date, part: row.part, title: row.title, minutes: row.minutes, score: row.score, note: row.note, createdAt: row.created_at })),
     completedDates: (datesResult.results ?? []).map((row) => row.date),
   });
@@ -93,7 +97,12 @@ export async function PATCH(request: Request) {
   const body = await request.json() as Record<string, unknown>;
   const id = text(body.id, 80);
   if (!id) return Response.json({ error: 'invalid id' }, { status: 400 });
-  await db().prepare('UPDATE study_plans SET completed = ? WHERE id = ?').bind(body.completed ? 1 : 0, id).run();
+  if (body.action === 'reschedule') {
+    if (!validDate(body.planDate)) return Response.json({ error: 'invalid date' }, { status: 400 });
+    await db().prepare('UPDATE study_plans SET plan_date = ? WHERE id = ? AND completed = 0').bind(body.planDate, id).run();
+  } else {
+    await db().prepare('UPDATE study_plans SET completed = ? WHERE id = ?').bind(body.completed ? 1 : 0, id).run();
+  }
   return Response.json({ ok: true });
 }
 

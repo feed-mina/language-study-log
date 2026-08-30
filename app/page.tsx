@@ -96,6 +96,7 @@ export default function Home() {
   const today = useMemo(() => localDateString(), []);
   const [selectedDate, setSelectedDate] = useState(today);
   const [plans, setPlans] = useState<StudyPlan[]>([]);
+  const [overduePlans, setOverduePlans] = useState<StudyPlan[]>([]);
   const [logs, setLogs] = useState<StudyLog[]>([]);
   const [materials, setMaterials] = useState<StudyMaterial[]>([]);
   const [completedDates, setCompletedDates] = useState<string[]>([]);
@@ -111,7 +112,7 @@ export default function Home() {
       const [dashboardResult, materialsResult] = await Promise.allSettled([
         fetch(`/api/dashboard?date=${selectedDate}&start=${week[0]}&end=${week[6]}`).then(async (response) => {
           if (!response.ok) throw new Error('dashboard load failed');
-          return response.json() as Promise<{ plans: StudyPlan[]; logs: StudyLog[]; completedDates: string[] }>;
+          return response.json() as Promise<{ plans: StudyPlan[]; overduePlans: StudyPlan[]; logs: StudyLog[]; completedDates: string[] }>;
         }),
         fetch(`${materialsApiOrigin}/api/materials?date=${selectedDate}`).then(async (response) => {
           if (!response.ok) throw new Error('materials load failed');
@@ -121,10 +122,12 @@ export default function Home() {
 
       if (dashboardResult.status === 'fulfilled') {
         setPlans(dashboardResult.value.plans);
+        setOverduePlans(dashboardResult.value.overduePlans ?? []);
         setLogs(dashboardResult.value.logs);
         setCompletedDates(dashboardResult.value.completedDates);
       } else {
         setPlans([]);
+        setOverduePlans([]);
         setLogs([]);
         setCompletedDates([]);
       }
@@ -177,6 +180,18 @@ export default function Home() {
     if (response.ok) { setNotice(plan.completed ? '완료 표시를 취소했어요.' : '학습을 완료했어요!'); await loadDashboard(); }
   }
 
+  async function reschedulePlan(plan: StudyPlan) {
+    const response = await fetch('/api/dashboard', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: plan.id, action: 'reschedule', planDate: selectedDate }),
+    });
+    if (response.ok) {
+      setNotice(`${plan.title} 일정을 이 날짜로 옮겼어요.`);
+      await loadDashboard();
+    } else setNotice('일정을 옮기지 못했어요. 잠시 후 다시 시도해 주세요.');
+  }
+
   async function deleteLog(id: string) {
     const response = await fetch(`/api/dashboard?id=${encodeURIComponent(id)}&kind=log`, { method: 'DELETE' });
     if (response.ok) { setNotice('기록을 삭제했어요.'); await loadDashboard(); }
@@ -208,6 +223,27 @@ export default function Home() {
             ); })}
           </div>
         </section>
+
+        {!loading && overduePlans.length > 0 && (
+          <section className="recovery-card" aria-labelledby="recovery-title">
+            <div className="recovery-intro">
+              <p className="mini-label">GENTLE RECOVERY</p>
+              <h2 id="recovery-title">놓친 공부, 다시 잡기</h2>
+              <p>미룬 건 실패가 아니에요. 욕심내지 말고 하나만 선택한 날짜로 옮겨 보세요.</p>
+            </div>
+            <div className="recovery-list">
+              {overduePlans.map((plan) => (
+                <article className="recovery-item" key={plan.id}>
+                  <div>
+                    <span>{toDate(plan.planDate).getMonth() + 1}.{toDate(plan.planDate).getDate()}에 놓침 · {plan.minutes}분</span>
+                    <strong>{plan.title}</strong>
+                  </div>
+                  <button onClick={() => void reschedulePlan(plan)}>이 날짜로 옮기기</button>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
 
         <div className="content-grid">
           <section className="today-card" aria-labelledby="today-title">
