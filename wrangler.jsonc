@@ -6,7 +6,9 @@
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
     "TIME_ZONE": "Asia/Seoul",
-    "SITE_URL": "https://language-study-log.evolvix.workers.dev"
+    "SITE_URL": "https://language-study-log.evolvix.workers.dev",
+    "ACCESS_TEAM_DOMAIN": "https://nameless-tooth-30bb.cloudflareaccess.com",
+    "ACCESS_AUD": "684f399d3a1259b68512b19b356f30d6d4f608a704b084b120133edd2b275008"
   },
   "d1_databases": [
     {

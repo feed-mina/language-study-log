@@ -22,12 +22,20 @@ function db() {
 }
 
 function canMutate(request: Request) {
-  const adminToken = (env as Cloudflare.Env & { ADMIN_TOKEN?: string }).ADMIN_TOKEN;
-  return isAuthorizedDashboardMutation(request, adminToken);
+  const workerEnv = env as Cloudflare.Env & {
+    ADMIN_TOKEN?: string;
+    ACCESS_TEAM_DOMAIN?: string;
+    ACCESS_AUD?: string;
+  };
+  return isAuthorizedDashboardMutation(request, {
+    adminToken: workerEnv.ADMIN_TOKEN,
+    accessTeamDomain: workerEnv.ACCESS_TEAM_DOMAIN,
+    accessAud: workerEnv.ACCESS_AUD,
+  });
 }
 
 function unauthorized() {
-  return Response.json({ error: 'administrator login required' }, { status: 401, headers: { 'cache-control': 'no-store' } });
+  return Response.json({ error: 'Cloudflare Access login required' }, { status: 401, headers: { 'cache-control': 'no-store' } });
 }
 
 async function ensureSchema() {

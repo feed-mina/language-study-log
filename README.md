@@ -26,7 +26,7 @@ ChatGPT 예약 작업이 만든 영어·일본어·TOEIC 학습 자료를 GitHub
 
 Cloudflare Cron은 같은 날짜의 자료를 중복 생성하지 않도록 비활성화했습니다. GitHub 보관 형식과 검증 규칙은 [`docs/chatgpt-study-sync.md`](docs/chatgpt-study-sync.md)에 정리되어 있습니다.
 
-GitHub Actions는 `wrangler.jsonc`에 연결된 Cloudflare D1을 갱신합니다. 화면과 API는 모두 `language-study-log.evolvix.workers.dev` Worker에서 제공합니다. 자료 조회는 공개하고, 일정과 개인 학습 기록의 추가·완료·이동·삭제는 관리자 로그인 또는 Bearer 토큰으로 보호합니다.
+GitHub Actions는 `wrangler.jsonc`에 연결된 Cloudflare D1을 갱신합니다. 화면과 API는 모두 `language-study-log.evolvix.workers.dev` Worker에서 제공합니다. 운영 Worker 전체는 Cloudflare Access로 보호하고, 지정된 Google 계정만 화면을 열 수 있습니다. 일정과 개인 학습 기록의 추가·완료·이동·삭제는 검증된 Access JWT와 same-origin 요청을 함께 요구합니다.
 
 ## API
 
@@ -37,15 +37,15 @@ GitHub Actions는 `wrangler.jsonc`에 연결된 Cloudflare D1을 갱신합니다
 | `GET`, `HEAD` | `/api/assets/:id` | R2 파일 조회 | 없음 |
 | `GET` | `/api/reviews/due?language=english&limit=20` | 오늘 복습할 카드 조회 | 없음 |
 | `GET` | `/api/dashboard` | 일정과 개인 학습 기록 조회 | 없음 |
-| `POST`, `PATCH`, `DELETE` | `/api/dashboard` | 일정과 개인 학습 기록 추가·변경·삭제 | 관리자 세션 또는 Bearer 토큰 |
-| `GET`, `POST`, `DELETE` | `/api/dashboard/session` | 관리자 세션 확인·로그인·로그아웃 | 로그인 시 `ADMIN_TOKEN` |
+| `POST`, `PATCH`, `DELETE` | `/api/dashboard` | 일정과 개인 학습 기록 추가·변경·삭제 | Cloudflare Access JWT + same-origin 또는 Bearer 토큰 |
+| `GET` | `/api/dashboard/session` | Google Access 로그인 신원 확인 | Cloudflare Access JWT |
 | `POST` | `/api/admin/generate` | 자료 생성 및 선택적 Telegram 발송 | Bearer 토큰 |
 | `POST` | `/api/admin/send/:contentId` | 기존 자료 Telegram 재발송 | Bearer 토큰 |
 | `POST` | `/api/admin/reviews/:cardId` | 복습 평가 저장 | Bearer 토큰 |
 | `PUT` | `/api/admin/assets/:kind/:filename` | MP3/PDF/이미지 업로드(최대 20 MiB) | Bearer 토큰 |
 | `POST` | `/api/telegram/connect` | 최근 `/start` 사용자와 Telegram 연결 | Bearer 토큰 |
 
-브라우저에서는 상단의 `관리자 로그인`에 `ADMIN_TOKEN`을 입력합니다. 성공하면 12시간 동안 서명된 `HttpOnly` 쿠키로 편집할 수 있으며 토큰 원문은 브라우저 저장소에 보관하지 않습니다. 자동화나 명령줄에서는 기존과 같이 `Authorization: Bearer $ADMIN_TOKEN`을 사용할 수 있습니다.
+브라우저에서는 별도 관리자 토큰을 입력하지 않습니다. Cloudflare Access가 Google 로그인을 처리하고, 앱은 `Cf-Access-Jwt-Assertion`의 서명·발급자·Audience를 검증한 뒤 편집 권한을 부여합니다. `ADMIN_TOKEN`은 브라우저 로그인용이 아니라 기존 자동화 API의 Bearer 인증 호환용으로만 유지합니다. Worker 전체가 Access로 보호된 운영 환경에서 외부 자동화가 HTTP API를 호출하려면 Cloudflare Access 서비스 인증도 함께 구성해야 합니다.
 
 ## 놓친 예약을 관리하는 방식
 
@@ -88,14 +88,15 @@ npx wrangler r2 bucket create language-study-log-assets
 
 2. 반환된 D1 ID를 `wrangler.jsonc`의 `database_id`에 기록합니다.
 3. Telegram의 `@BotFather`에서 개인 봇을 만든 뒤 새 봇과의 채팅에서 `/start`를 한 번 보냅니다.
-4. 실제 값이 콘솔 기록이나 Git에 남지 않도록 Wrangler의 대화형 입력으로 Worker 비밀 값을 저장합니다. Bot Token은 채팅이나 저장소에 붙여 넣지 않습니다.
+4. Cloudflare Access에서 운영 Worker의 `All traffic`을 보호하고, 정확한 Google 이메일 Allow 정책과 Google Identity Provider를 연결합니다. `wrangler.jsonc`의 `ACCESS_TEAM_DOMAIN`과 `ACCESS_AUD`는 해당 Access 애플리케이션 값과 일치해야 합니다.
+5. 실제 값이 콘솔 기록이나 Git에 남지 않도록 Wrangler의 대화형 입력으로 Worker 비밀 값을 저장합니다. `ADMIN_TOKEN`은 자동화 API 호환용입니다. Bot Token은 채팅이나 저장소에 붙여 넣지 않습니다.
 
 ```bash
 npx wrangler secret put ADMIN_TOKEN
 npx wrangler secret put TELEGRAM_BOT_TOKEN
 ```
 
-5. 배포 후 아래 연결 API를 한 번 호출합니다. Worker는 Telegram에 보관된 가장 최근의 개인 `/start` 메시지를 확인하고 Chat ID를 D1에 저장한 뒤 확인 메시지를 발송합니다. Chat ID를 직접 복사하거나 별도 서비스에 제공할 필요가 없습니다.
+6. 배포 후 아래 연결 API를 한 번 호출합니다. Worker 전체가 Access로 보호돼 있다면 이 호출에는 허용된 Access 세션 또는 서비스 인증도 필요합니다. Worker는 Telegram에 보관된 가장 최근의 개인 `/start` 메시지를 확인하고 Chat ID를 D1에 저장한 뒤 확인 메시지를 발송합니다. Chat ID를 직접 복사하거나 별도 서비스에 제공할 필요가 없습니다.
 
 ```bash
 curl -X POST https://language-study-log.evolvix.workers.dev/api/telegram/connect \
@@ -104,7 +105,7 @@ curl -X POST https://language-study-log.evolvix.workers.dev/api/telegram/connect
 
 연결 상태는 `GET /api/telegram/status`에서 `token`, `connected` 불리언 값으로만 확인할 수 있습니다. 기존 `TELEGRAM_CHAT_ID` Secret은 필요한 경우 수동 대상 지정용 호환 옵션으로 계속 지원합니다.
 
-6. GitHub 저장소 Actions secrets에 아래 값을 등록합니다.
+7. GitHub 저장소 Actions secrets에 아래 값을 등록합니다.
 
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_API_TOKEN`

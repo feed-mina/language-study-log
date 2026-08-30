@@ -110,9 +110,7 @@ export default function Home() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
   const [authState, setAuthState] = useState<AuthState>('checking');
-  const [authModal, setAuthModal] = useState(false);
-  const [adminToken, setAdminToken] = useState('');
-  const [authenticating, setAuthenticating] = useState(false);
+  const [accessEmail, setAccessEmail] = useState('');
   const week = useMemo(() => getWeek(selectedDate), [selectedDate]);
   const logWeek = useMemo(() => getWeek(logWeekStart), [logWeekStart]);
 
@@ -148,9 +146,13 @@ export default function Home() {
   useEffect(() => {
     let active = true;
     void fetch('/api/dashboard/session', { cache: 'no-store' })
-      .then(async (response) => response.ok ? response.json() as Promise<{ authenticated?: boolean }> : { authenticated: false })
-      .then((result) => { if (active) setAuthState(result.authenticated ? 'authenticated' : 'guest'); })
-      .catch(() => { if (active) setAuthState('guest'); });
+      .then(async (response) => response.ok ? response.json() as Promise<{ authenticated?: boolean; email?: string }> : { authenticated: false, email: undefined })
+      .then((result) => {
+        if (!active) return;
+        setAuthState(result.authenticated ? 'authenticated' : 'guest');
+        setAccessEmail(result.authenticated && result.email ? result.email : '');
+      })
+      .catch(() => { if (active) { setAuthState('guest'); setAccessEmail(''); } });
     return () => { active = false; };
   }, []);
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(''), 4200); return () => clearTimeout(timer); }, [notice]);
@@ -164,35 +166,19 @@ export default function Home() {
 
   function requireAdmin(): boolean {
     if (authState === 'authenticated') return true;
-    setAuthModal(true);
-    setNotice(authState === 'checking' ? '관리자 인증 상태를 확인하고 있어요.' : '수정하려면 관리자 로그인이 필요해요.');
+    setNotice(authState === 'checking' ? 'Google 로그인 상태를 확인하고 있어요.' : 'Google Access 인증을 확인하지 못했어요. 페이지를 새로고침해 주세요.');
     return false;
   }
 
   function handleUnauthorized(response: Response): boolean {
     if (response.status !== 401) return false;
-    setAuthState('guest'); setEditor(null); setCompletionTarget(null); setAuthModal(true);
-    setNotice('로그인 시간이 끝났어요. 다시 로그인해 주세요.');
+    setAuthState('guest'); setAccessEmail(''); setEditor(null); setCompletionTarget(null);
+    setNotice('Google 로그인 인증이 만료됐어요. 페이지를 새로고침해 다시 로그인해 주세요.');
     return true;
   }
 
   function openEditor(value: Exclude<Editor, null>) { if (requireAdmin()) setEditor(value); }
   function openCompletion(target: CompletionTarget) { if (requireAdmin()) setCompletionTarget(target); }
-
-  async function login(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setAuthenticating(true);
-    try {
-      const response = await fetch('/api/dashboard/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: adminToken }) });
-      if (!response.ok) throw new Error('login failed');
-      setAdminToken(''); setAuthState('authenticated'); setAuthModal(false); setNotice('관리자 모드가 열렸어요.');
-    } catch { setNotice('관리자 토큰이 맞지 않거나 로그인을 처리하지 못했어요.'); }
-    finally { setAuthenticating(false); }
-  }
-
-  async function logout() {
-    await fetch('/api/dashboard/session', { method: 'DELETE' }).catch(() => undefined);
-    setAuthState('guest'); setEditor(null); setCompletionTarget(null); setNotice('관리자 모드를 닫았어요.');
-  }
 
   async function submitEditor(event: FormEvent<HTMLFormElement>, kind: 'external-log' | 'plan' | 'goal') {
     event.preventDefault(); setSaving(true);
@@ -261,7 +247,9 @@ export default function Home() {
         <a className="brand" href="#top" aria-label="Language Study Log 홈"><span className="brand-mark">L</span><span>Language Study Log</span></a>
         <div className="nav-actions">
           <span className="streak-pill"><span>🔥</span> 이번 주 {studiedThisWeek}일</span>
-          <button className="admin-button" onClick={() => authState === 'authenticated' ? void logout() : setAuthModal(true)}>{authState === 'authenticated' ? '편집 종료' : '관리자 로그인'}</button>
+          {authState === 'authenticated'
+            ? <a className="admin-button" href="/cdn-cgi/access/logout" title={accessEmail || 'Google Access 로그인됨'}>Google 로그아웃</a>
+            : <span className="access-status">{authState === 'checking' ? 'Google 인증 확인 중' : 'Google 인증 필요'}</span>}
           {selectedDate !== today && <button className="icon-button" onClick={() => setSelectedDate(today)}>오늘로 돌아가기</button>}
         </div>
       </nav>
@@ -362,7 +350,6 @@ export default function Home() {
 
       {completionTarget && <div className="modal-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) setCompletionTarget(null); }}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="completion-title"><button className="modal-close" onClick={() => setCompletionTarget(null)} aria-label="닫기">×</button><p className="mini-label">LEARNING COMPLETE</p><h2 id="completion-title">학습 완료 기록</h2><p className="modal-copy">{completionTarget.title}과 연결된 기록을 자동으로 만듭니다.</p><form onSubmit={(event) => void submitCompletion(event)}><label>학습 시간<input name="minutes" type="number" min="1" max="600" defaultValue={completionTarget.minutes} required /></label><label>점수 또는 성과<input name="score" placeholder="예: 8/10, 완료" maxLength={30} /></label><label>한 줄 메모<textarea name="note" placeholder="다음에 기억할 것" maxLength={300} /></label><label>헷갈린 항목<textarea name="confusedItems" placeholder="다음 복습에 다시 보여줄 내용" maxLength={300} /></label><button className="primary-button modal-submit" disabled={saving}>{saving ? '저장 중...' : '완료하고 기록 만들기'}</button></form></section></div>}
 
-      {authModal && <div className="modal-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) setAuthModal(false); }}><section className="modal auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title"><button className="modal-close" onClick={() => setAuthModal(false)} aria-label="닫기">×</button><p className="mini-label">OWNER ACCESS</p><h2 id="auth-title">관리자 로그인</h2><p className="modal-copy">일정과 기록을 수정할 때만 필요합니다. 토큰 원문은 브라우저에 저장하지 않아요.</p><form onSubmit={(event) => void login(event)}><label>관리자 토큰<input type="password" value={adminToken} onChange={(event) => setAdminToken(event.target.value)} autoComplete="current-password" required maxLength={1024} /></label><button className="primary-button modal-submit" disabled={authenticating}>{authenticating ? '확인 중...' : '관리자 모드 열기'}</button></form></section></div>}
       {notice && <div className="toast" role="status">{notice}</div>}
     </main>
   );

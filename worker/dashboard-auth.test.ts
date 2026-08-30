@@ -1,17 +1,30 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { SignJWT } from 'jose';
+
 import {
-  createDashboardSession,
-  dashboardSessionCookie,
   isAuthorizedDashboardMutation,
+  verifyAccessIdentity,
   verifyAdminToken,
-  verifyDashboardSession,
 } from '../app/api/dashboard/auth.ts';
 
 const workerOrigin = 'https://language-study-log.evolvix.workers.dev';
 const adminToken = 'test-admin-token-with-enough-entropy';
-const now = Date.UTC(2026, 7, 30, 1, 0, 0);
+const accessTeamDomain = 'https://example-team.cloudflareaccess.com';
+const accessAud = 'test-access-audience-1234567890';
+const signingKey = new TextEncoder().encode('test-access-signing-key-with-enough-entropy');
+const authConfig = { adminToken, accessTeamDomain, accessAud };
+
+async function accessToken(overrides: { issuer?: string; audience?: string; email?: string } = {}) {
+  return new SignJWT({ email: overrides.email ?? 'owner@example.com' })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuer(overrides.issuer ?? accessTeamDomain)
+    .setAudience(overrides.audience ?? accessAud)
+    .setIssuedAt()
+    .setExpirationTime('5m')
+    .sign(signingKey);
+}
 
 test('accepts the configured administrator Bearer token only', async () => {
   const allowed = new Request(`${workerOrigin}/api/dashboard`, {
@@ -22,43 +35,58 @@ test('accepts the configured administrator Bearer token only', async () => {
     method: 'POST',
     headers: { authorization: 'Bearer wrong-token' },
   });
-  assert.equal(await isAuthorizedDashboardMutation(allowed, adminToken, now), true);
-  assert.equal(await isAuthorizedDashboardMutation(denied, adminToken, now), false);
+  assert.equal(await isAuthorizedDashboardMutation(allowed, authConfig, signingKey), true);
+  assert.equal(await isAuthorizedDashboardMutation(denied, authConfig, signingKey), false);
   assert.equal(await verifyAdminToken(adminToken, adminToken), true);
   assert.equal(await verifyAdminToken('wrong-token', adminToken), false);
 });
 
-test('accepts a signed same-origin browser session', async () => {
-  const session = await createDashboardSession(adminToken, now);
+test('accepts a verified Cloudflare Access identity for same-origin browser writes', async () => {
   const request = new Request(`${workerOrigin}/api/dashboard`, {
     method: 'PATCH',
     headers: {
-      cookie: `theme=green; __Host-language-study-admin=${session}`,
       origin: workerOrigin,
+      'cf-access-jwt-assertion': await accessToken(),
     },
   });
-  assert.equal(await verifyDashboardSession(session, adminToken, now), true);
-  assert.equal(await isAuthorizedDashboardMutation(request, adminToken, now), true);
+  assert.deepEqual(await verifyAccessIdentity(request, authConfig, signingKey), { email: 'owner@example.com' });
+  assert.equal(await isAuthorizedDashboardMutation(request, authConfig, signingKey), true);
 });
 
-test('rejects cross-origin, tampered, and expired sessions', async () => {
-  const session = await createDashboardSession(adminToken, now);
+test('rejects cross-origin and invalid Access tokens', async () => {
+  const validToken = await accessToken();
   const crossOrigin = new Request(`${workerOrigin}/api/dashboard`, {
     method: 'DELETE',
-    headers: { cookie: `__Host-language-study-admin=${session}`, origin: 'https://attacker.example' },
+    headers: { origin: 'https://attacker.example', 'cf-access-jwt-assertion': validToken },
   });
-  assert.equal(await isAuthorizedDashboardMutation(crossOrigin, adminToken, now), false);
-  const tamperedIndex = session.lastIndexOf('.') + 5;
-  const tampered = `${session.slice(0, tamperedIndex)}${session[tamperedIndex] === 'a' ? 'b' : 'a'}${session.slice(tamperedIndex + 1)}`;
-  assert.equal(await verifyDashboardSession(tampered, adminToken, now), false);
-  assert.equal(await verifyDashboardSession(session, adminToken, now + 13 * 60 * 60 * 1000), false);
+  const wrongIssuer = new Request(`${workerOrigin}/api/dashboard`, {
+    method: 'POST',
+    headers: { origin: workerOrigin, 'cf-access-jwt-assertion': await accessToken({ issuer: 'https://attacker.example' }) },
+  });
+  const wrongAudience = new Request(`${workerOrigin}/api/dashboard`, {
+    method: 'POST',
+    headers: { origin: workerOrigin, 'cf-access-jwt-assertion': await accessToken({ audience: 'different-access-audience-1234' }) },
+  });
+  assert.equal(await isAuthorizedDashboardMutation(crossOrigin, authConfig, signingKey), false);
+  assert.equal(await isAuthorizedDashboardMutation(wrongIssuer, authConfig, signingKey), false);
+  assert.equal(await isAuthorizedDashboardMutation(wrongAudience, authConfig, signingKey), false);
 });
 
-test('session cookie is host-only, secure, and inaccessible to scripts', async () => {
-  const cookie = dashboardSessionCookie(await createDashboardSession(adminToken, now));
-  assert.match(cookie, /^__Host-language-study-admin=/);
-  assert.match(cookie, /; Path=\//);
-  assert.match(cookie, /; HttpOnly/);
-  assert.match(cookie, /; Secure/);
-  assert.match(cookie, /; SameSite=Strict/);
+test('fails closed when Access configuration or identity is missing', async () => {
+  const missingToken = new Request(`${workerOrigin}/api/dashboard`, { method: 'POST', headers: { origin: workerOrigin } });
+  const missingEmail = new Request(`${workerOrigin}/api/dashboard`, {
+    method: 'POST',
+    headers: {
+      origin: workerOrigin,
+      'cf-access-jwt-assertion': await new SignJWT({})
+        .setProtectedHeader({ alg: 'HS256' })
+        .setIssuer(accessTeamDomain)
+        .setAudience(accessAud)
+        .setExpirationTime('5m')
+        .sign(signingKey),
+    },
+  });
+  assert.equal(await isAuthorizedDashboardMutation(missingToken, authConfig, signingKey), false);
+  assert.equal(await verifyAccessIdentity(missingEmail, authConfig, signingKey), null);
+  assert.equal(await verifyAccessIdentity(missingEmail, { accessTeamDomain: '', accessAud }, signingKey), null);
 });
