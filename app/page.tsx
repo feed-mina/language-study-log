@@ -168,7 +168,6 @@ export default function Home() {
     return () => { active = false; };
   }, []);
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(''), 4200); return () => clearTimeout(timer); }, [notice]);
-  useEffect(() => () => window.speechSynthesis?.cancel(), []);
   useEffect(() => {
     if (!focusedMaterialId || loading) return;
     const material = materials.find((item) => item.id === focusedMaterialId);
@@ -195,33 +194,6 @@ export default function Home() {
     params.set('material', materialId);
     window.history.pushState({}, '', `${window.location.pathname}?${params}`);
     setFocusedMaterialId(materialId);
-  }
-
-  function speakMaterial(material: StudyMaterial, payload: StudyPayload) {
-    if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
-      setNotice('이 브라우저는 문장 듣기를 지원하지 않아요. Chrome 또는 Safari에서 다시 시도해 주세요.');
-      return;
-    }
-    if (speakingMaterialId === material.id) { window.speechSynthesis.cancel(); setSpeakingMaterialId(''); return; }
-    window.speechSynthesis.cancel();
-    const language = materialKind[material.kind].language === 'ja' ? 'ja-JP' : 'en-US';
-    const sentences = payload.items.map((item) => item.prompt.trim()).filter(Boolean);
-    if (sentences.length === 0) { setNotice('읽어 줄 문장이 없어요.'); return; }
-    setSpeakingMaterialId(material.id);
-    sentences.forEach((sentence, index) => {
-      const utterance = new SpeechSynthesisUtterance(sentence);
-      utterance.lang = language;
-      utterance.rate = language === 'ja-JP' ? 0.82 : 0.86;
-      utterance.pitch = 1;
-      if (index === sentences.length - 1) {
-        utterance.onend = () => setSpeakingMaterialId('');
-        utterance.onerror = (event) => {
-          setSpeakingMaterialId('');
-          if (event.error !== 'canceled' && event.error !== 'interrupted') setNotice('문장을 재생하지 못했어요. 브라우저 음성 설정을 확인해 주세요.');
-        };
-      }
-      window.speechSynthesis.speak(utterance);
-    });
   }
 
   function requireAdmin(): boolean {
