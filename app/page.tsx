@@ -14,7 +14,8 @@ type StudyMaterial = { id: string; date: string; kind: 'english' | 'japanese' | 
 type Goal = { targetScore: number; examDate: string; updatedAt: string };
 type ToeicScore = { score: number; scoreDate: string; scoreType: string; source: string };
 type ReviewNote = { title: string; studyDate: string; note: string; confusedItems: string };
-type DashboardPayload = { plans: StudyPlan[]; overduePlans: StudyPlan[]; logs: StudyLog[]; completedDates: string[]; legacyLogsCount: number; goal: Goal | null; latestScore: ToeicScore | null; reviewNotes: ReviewNote[] };
+type QuizMistake = { id: string; materialId: string; itemIndex: number; selectedLabel: string; correctLabel: string; prompt: string; materialTitle: string; materialKind: string; createdAt: string };
+type DashboardPayload = { plans: StudyPlan[]; overduePlans: StudyPlan[]; logs: StudyLog[]; completedDates: string[]; legacyLogsCount: number; goal: Goal | null; latestScore: ToeicScore | null; reviewNotes: ReviewNote[]; quizMistakes: QuizMistake[] };
 type AuthState = 'checking' | 'guest' | 'authenticated';
 type Editor = 'external-log' | 'plan' | 'goal' | null;
 type CompletionTarget = { type: 'plan' | 'material'; id: string; title: string; part: string; minutes: number; date: string };
@@ -35,7 +36,7 @@ const materialOrder: StudyMaterial['kind'][] = ['english', 'japanese', 'toeic'];
 function isString(value: unknown): value is string { return typeof value === 'string'; }
 
 function readOptions(value: unknown): StudyOption[] | undefined {
-  if (!Array.isArray(value) || value.length !== 4) return undefined;
+  if (!Array.isArray(value) || value.length < 2 || value.length > 4) return undefined;
   const labels = ['A', 'B', 'C', 'D'] as const;
   const result = value.map((option, index) => {
     if (!option || typeof option !== 'object' || Array.isArray(option)) return null;
@@ -81,6 +82,7 @@ function readMaterials(value: unknown): StudyMaterial[] {
 function formatKorean(value: string) { const date = toLocalDate(value); return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일 ${days[date.getDay()]}요일`; }
 function formatShort(value: string) { const date = toLocalDate(value); return `${date.getMonth() + 1}월 ${date.getDate()}일`; }
 function formatCreated(value: string) { return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)); }
+function validDashboardDate(value: string) { return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(toLocalDate(value).valueOf()); }
 
 function Marker() { return <span className="accordion-marker" aria-hidden="true">⌄</span>; }
 
@@ -95,6 +97,7 @@ export default function Home() {
   const today = useMemo(() => kstToday(), []);
   const currentWeekStart = useMemo(() => getWeek(today)[0], [today]);
   const [selectedDate, setSelectedDate] = useState(today);
+  const [focusedMaterialId, setFocusedMaterialId] = useState('');
   const [logWeekStart, setLogWeekStart] = useState(currentWeekStart);
   const [plans, setPlans] = useState<StudyPlan[]>([]);
   const [overduePlans, setOverduePlans] = useState<StudyPlan[]>([]);
@@ -105,11 +108,14 @@ export default function Home() {
   const [goal, setGoal] = useState<Goal | null>(null);
   const [latestScore, setLatestScore] = useState<ToeicScore | null>(null);
   const [reviewNotes, setReviewNotes] = useState<ReviewNote[]>([]);
+  const [quizMistakes, setQuizMistakes] = useState<QuizMistake[]>([]);
   const [editor, setEditor] = useState<Editor>(null);
   const [completionTarget, setCompletionTarget] = useState<CompletionTarget | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
+  const [speakingMaterialId, setSpeakingMaterialId] = useState('');
+  const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>({});
   const [authState, setAuthState] = useState<AuthState>('checking');
   const [accessEmail, setAccessEmail] = useState('');
   const week = useMemo(() => getWeek(selectedDate), [selectedDate]);
@@ -131,9 +137,9 @@ export default function Home() {
     if (dashboardResult.status === 'fulfilled') {
       const data = dashboardResult.value;
       setPlans(data.plans); setOverduePlans(data.overduePlans ?? []); setLogs(data.logs); setCompletedDates(data.completedDates);
-      setLegacyLogsCount(data.legacyLogsCount ?? 0); setGoal(data.goal); setLatestScore(data.latestScore); setReviewNotes(data.reviewNotes ?? []);
+      setLegacyLogsCount(data.legacyLogsCount ?? 0); setGoal(data.goal); setLatestScore(data.latestScore); setReviewNotes(data.reviewNotes ?? []); setQuizMistakes(data.quizMistakes ?? []);
     } else {
-      setPlans([]); setOverduePlans([]); setLogs([]); setCompletedDates([]); setReviewNotes([]);
+      setPlans([]); setOverduePlans([]); setLogs([]); setCompletedDates([]); setReviewNotes([]); setQuizMistakes([]);
       setNotice('학습 기록을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.');
     }
     if (materialsResult.status === 'fulfilled') setMaterials(readMaterials(materialsResult.value));
@@ -144,6 +150,14 @@ export default function Home() {
   // Refresh the client dashboard whenever its selected date or log week changes.
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void loadDashboard(); }, [loadDashboard]);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const date = params.get('date') ?? '';
+    // Restore shareable plan links after hydration without rendering different server/client markup.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (validDashboardDate(date)) setSelectedDate(date);
+    setFocusedMaterialId(params.get('material') ?? '');
+  }, []);
   useEffect(() => {
     let active = true;
     void fetch('/api/dashboard/session', { cache: 'no-store' })
@@ -157,6 +171,13 @@ export default function Home() {
     return () => { active = false; };
   }, []);
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(''), 4200); return () => clearTimeout(timer); }, [notice]);
+  useEffect(() => () => window.speechSynthesis?.cancel(), []);
+  useEffect(() => {
+    if (!focusedMaterialId || loading) return;
+    const material = materials.find((item) => item.id === focusedMaterialId);
+    if (!material) return;
+    requestAnimationFrame(() => document.getElementById(`material-${focusedMaterialId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  }, [focusedMaterialId, loading, materials]);
 
   const studiedThisWeek = new Set(completedDates).size;
   const weekPercent = Math.round((studiedThisWeek / 7) * 100);
@@ -164,6 +185,67 @@ export default function Home() {
   const sortedMaterials = [...materials].sort((a, b) => materialOrder.indexOf(a.kind) - materialOrder.indexOf(b.kind));
   const scoreProgress = goal && latestScore ? Math.min(100, Math.round((latestScore.score / Math.max(goal.targetScore, 1)) * 100)) : 0;
   const remainingScore = goal && latestScore ? goal.targetScore - latestScore.score : null;
+  const englishGoalDate = shiftDate(today, 30);
+
+  function openPlanMaterial(plan: StudyPlan) {
+    if (!plan.id.startsWith('content:')) {
+      setNotice('직접 만든 일정에는 아직 연결된 학습 자료가 없어요.');
+      return;
+    }
+    const materialId = plan.id.slice('content:'.length);
+    const params = new URLSearchParams(window.location.search);
+    params.set('date', plan.planDate);
+    params.set('material', materialId);
+    window.history.pushState({}, '', `${window.location.pathname}?${params}`);
+    setFocusedMaterialId(materialId);
+  }
+
+  function speakMaterial(material: StudyMaterial, payload: StudyPayload) {
+    if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
+      setNotice('이 브라우저는 문장 듣기를 지원하지 않아요. Chrome 또는 Safari에서 다시 시도해 주세요.');
+      return;
+    }
+    if (speakingMaterialId === material.id) { window.speechSynthesis.cancel(); setSpeakingMaterialId(''); return; }
+    window.speechSynthesis.cancel();
+    const language = materialKind[material.kind].language === 'ja' ? 'ja-JP' : 'en-US';
+    const sentences = payload.items.map((item) => item.prompt.trim()).filter(Boolean);
+    if (sentences.length === 0) { setNotice('읽어 줄 문장이 없어요.'); return; }
+    setSpeakingMaterialId(material.id);
+    sentences.forEach((sentence, index) => {
+      const utterance = new SpeechSynthesisUtterance(sentence);
+      utterance.lang = language;
+      utterance.rate = language === 'ja-JP' ? 0.82 : 0.86;
+      utterance.pitch = 1;
+      if (index === sentences.length - 1) {
+        utterance.onend = () => setSpeakingMaterialId('');
+        utterance.onerror = (event) => {
+          setSpeakingMaterialId('');
+          if (event.error !== 'canceled' && event.error !== 'interrupted') setNotice('문장을 재생하지 못했어요. 브라우저 음성 설정을 확인해 주세요.');
+        };
+      }
+      window.speechSynthesis.speak(utterance);
+    });
+  }
+
+  function speakQuestion(material: StudyMaterial, item: StudyItem) {
+    if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') { setNotice('이 브라우저에서는 문제 듣기를 지원하지 않아요.'); return; }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance([item.prompt, ...(item.options?.map((option) => `${option.label}. ${option.text}`) ?? [])].join('. '));
+    utterance.lang = material.kind === 'japanese' ? 'ja-JP' : 'en-US';
+    utterance.rate = material.kind === 'japanese' ? 0.78 : 0.84;
+    window.speechSynthesis.speak(utterance);
+  }
+
+  async function chooseQuizOption(material: StudyMaterial, item: StudyItem, index: number, label: string) {
+    const key = `${material.id}:${index}`;
+    if (quizAnswers[key]) return;
+    setQuizAnswers((current) => ({ ...current, [key]: label }));
+    const correctLabel = item.answer.match(/^\s*([A-D])\./i)?.[1]?.toUpperCase();
+    if (!correctLabel || label === correctLabel || authState !== 'authenticated') return;
+    const response = await fetch('/api/dashboard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'quiz-attempt', materialId: material.id, itemIndex: index, selectedLabel: label, correctLabel, prompt: item.prompt }) });
+    if (!response.ok && !handleUnauthorized(response)) setNotice('오답 기록을 저장하지 못했어요.');
+    else if (response.ok) await loadDashboard();
+  }
 
   function requireAdmin(): boolean {
     if (authState === 'authenticated') return true;
@@ -285,23 +367,29 @@ export default function Home() {
             <div className="accordion-body"><button className="time-badge add-plan" onClick={() => openEditor('plan')}>＋ 일정 추가</button>
               {loading ? <div className="empty-state">일정을 불러오는 중...</div> : plans.length ? plans.map((plan) => (
                 <article className="plan-row" key={plan.id}>
-                  <div className={`plan-item ${plan.completed ? 'is-complete' : ''}`}>
+                  <button className={`plan-item ${plan.completed ? 'is-complete' : ''}`} onClick={() => openPlanMaterial(plan)} aria-label={`${plan.title} 학습 자료 보기`}>
                     <span className={`part-badge ${categoryClass[plan.category] ?? 'green'}`}>{plan.completed === 1 ? '✓' : plan.completed === 2 ? '↗' : categoryLabel[plan.category] ?? plan.category}</span>
                     <div><strong>{plan.title}</strong><p>{plan.completed === 2 ? '다른 날짜에 재계획됨' : plan.detail || '세부 메모 없음'}</p></div><span className="plan-time">{plan.minutes}분</span>
-                  </div>
+                  </button>
                   {plan.completed === 0 && <button className="small-action" onClick={() => openCompletion({ type: 'plan', id: plan.id, title: plan.title, part: plan.category, minutes: plan.minutes, date: plan.planDate })}>학습 완료 기록</button>}
                   {plan.completed === 1 && <button className="small-action subtle" onClick={() => void undoPlan(plan)}>완료 취소</button>}
                   <button className="delete-button plan-delete" onClick={() => void deleteItem(plan.id, 'plan')} aria-label={`${plan.title} 일정 삭제`}>×</button>
                 </article>
               )) : <div className="empty-state"><strong>아직 예정된 공부가 없어요.</strong><span>일정을 추가하거나 아래 예약 자료에서 학습을 시작해 보세요.</span></div>}
               <div className="plan-footer"><span>예상 {totalMinutes}분</span><span>완료 시 기록 자동 생성</span></div>
+              <section className="mistake-notebook"><header><div><span>DAILY WRONG ANSWERS</span><strong>오늘의 오답노트</strong></div><b>{quizMistakes.length}개</b></header>{quizMistakes.length ? <div>{quizMistakes.map((mistake) => <article key={mistake.id}><span>{mistake.materialKind === 'japanese' ? '일본어' : mistake.materialKind === 'toeic' ? 'TOEIC' : '영어'} · {mistake.itemIndex + 1}번</span><strong>{mistake.prompt.split('\n')[0]}</strong><p>내 답 {mistake.selectedLabel} <i>→</i> 정답 {mistake.correctLabel}</p></article>)}</div> : <p>아직 틀린 문제가 없어요. 문제를 풀면 날짜별로 여기에 자동 기록됩니다.</p>}</section>
               {reviewNotes.length > 0 && <div className="review-notes"><strong>다음 복습에 이어볼 메모</strong>{reviewNotes.map((item) => <p key={`${item.studyDate}-${item.title}`}><span>{formatShort(item.studyDate)} · {item.title}</span>{item.confusedItems || item.note}</p>)}</div>}
             </div>
           </details>
 
           <details className="accordion-card score-card" key={`goal-${selectedDate}`}>
-            <summary className="score-summary"><div><p className="mini-label">TOEIC GOAL</p><h2>TOEIC 목표</h2></div><span>{goal ? `${goal.targetScore}점 · ${dDay(goal.examDate, today)}` : '목표 설정하기'} <Marker /></span></summary>
+            <summary className="score-summary"><div><p className="mini-label">MY GOALS</p><h2>학습 목표</h2><div className="goal-tags"><b>영어 말하기</b><b>JLPT N5</b><b>TOEIC</b></div></div><span>3개 목표 <Marker /></span></summary>
             <div className="accordion-body">
+              <div className="goal-list">
+                <article><span>한 달 집중</span><strong>영어로 자기소개·업무 소개</strong><small>{formatShort(englishGoalDate)}까지 · 막힘없이 말하기</small></article>
+                <article><span>12월 자격증</span><strong>JLPT N5 합격</strong><small>12월 6일 시험 · {dDay('2026-12-06', today)}</small></article>
+                <article><span>점수 목표</span><strong>{goal ? `TOEIC ${goal.targetScore}점` : 'TOEIC 목표 설정'}</strong><small>{goal ? `${goal.examDate} · ${dDay(goal.examDate, today)}` : '목표 점수와 시험일을 정해 주세요'}</small></article>
+              </div>
               {goal ? <><div className="score-numbers"><strong>{goal.targetScore}</strong><span>점</span></div><div className="score-track"><i style={{ width: `${scoreProgress}%` }} /></div>
                 <div className="score-meta"><span>{latestScore ? `최근 ${latestScore.score}점` : '최근 성적 없음'}</span><strong>{remainingScore === null ? '성적을 기록해 주세요' : remainingScore > 0 ? `${remainingScore}점 남음` : remainingScore === 0 ? '목표 달성' : `${Math.abs(remainingScore)}점 초과 달성`}</strong></div>
                 {latestScore && <p className="score-source">{latestScore.scoreDate} · {scoreTypeLabels[latestScore.scoreType] ?? latestScore.scoreType}{latestScore.source ? ` · ${latestScore.source}` : ''}</p>}
@@ -316,13 +404,24 @@ export default function Home() {
           <div className="accordion-body">
             {loading ? <div className="empty-state material-empty">예약 자료를 불러오는 중...</div> : sortedMaterials.length ? <div className="materials-grid">
               {sortedMaterials.map((material) => { const meta = materialKind[material.kind]; const payload = readPayload(material.body); const audioAssets = material.assets.filter((asset) => asset.contentType.startsWith('audio/')); return (
-                <details className={`material-card ${material.kind}`} key={material.id}>
+                <details className={`material-card ${material.kind} ${focusedMaterialId === material.id ? 'is-focused' : ''}`} id={`material-${material.id}`} open={focusedMaterialId === material.id || undefined} key={material.id}>
                   <summary className="material-card-summary"><div><span className="material-kind">{meta.label}</span><small>{material.status === 'completed' ? '완료' : material.status === 'in_progress' ? '학습 중' : meta.description}</small></div><strong>{material.title}</strong><span>{payload?.items.length ?? 0}개 <Marker /></span></summary>
                   <div className="material-card-body"><p className="material-summary">{material.summary}</p>
-                    <div className="material-actions">{material.status === 'ready' && <button onClick={() => void startMaterial(material)}>학습 시작</button>}<button onClick={() => openCompletion({ type: 'material', id: material.id, title: material.title, part: meta.part, minutes: meta.minutes, date: selectedDate })}>{material.status === 'completed' ? '완료 기록 수정' : '학습 완료 기록'}</button></div>
+                    <div className="material-actions">{payload && <button className="listen-button" onClick={() => speakMaterial(material, payload)} aria-pressed={speakingMaterialId === material.id}><span aria-hidden="true">{speakingMaterialId === material.id ? '■' : '▶'}</span>{speakingMaterialId === material.id ? ` ${meta.label} 듣기 멈추기` : ` ${meta.label} ${payload.items.length}문장 연속 듣기`}</button>}{material.status === 'ready' && <button onClick={() => void startMaterial(material)}>학습 시작</button>}<button onClick={() => openCompletion({ type: 'material', id: material.id, title: material.title, part: meta.part, minutes: meta.minutes, date: selectedDate })}>{material.status === 'completed' ? '완료 기록 수정' : '학습 완료 기록'}</button></div>
+                    {payload && <p className="listen-help">{material.kind === 'japanese' ? '일본어 음성' : '영어 음성'}으로 문제를 한 문장씩 천천히 읽어 드려요.</p>}
                     {payload?.speakingSentence && <div className="speaking-block"><span>말하기 한 문장</span><strong lang={meta.language}>{payload.speakingSentence}</strong>{payload.speakingMeaning && <p>{payload.speakingMeaning}</p>}</div>}
                     {audioAssets.map((asset) => <figure className="material-audio" key={asset.id}><figcaption>듣기 자료 · {asset.filename}</figcaption><audio controls preload="none" src={asset.url}>오디오를 재생할 수 없는 브라우저입니다.</audio></figure>)}
-                    {payload?.items.length ? <div className="material-items">{payload.items.map((item, index) => <details className="material-item" key={`${material.id}-${index}`}><summary><span>{String(index + 1).padStart(2, '0')}</span><div><strong lang={meta.language}>{item.prompt}</strong>{item.options && <ol className="material-options">{item.options.map((option) => <li key={option.label}><b>{option.label}</b><span>{option.text}</span></li>)}</ol>}</div></summary><div className="material-answer"><div><span>정답</span><p>{item.answer}</p></div>{item.explanation && <div><span>설명</span><p>{item.explanation}</p></div>}</div></details>)}</div> : <p className="material-unavailable">상세 학습 내용은 준비 중이에요.</p>}
+                    {payload?.items.length ? <div className="material-items">{payload.items.map((item, index) => {
+                      const quizKey = `${material.id}:${index}`;
+                      const selected = quizAnswers[quizKey];
+                      const correctLabel = item.answer.match(/^\s*([A-D])\./i)?.[1]?.toUpperCase();
+                      return item.options && correctLabel ? <article className="material-item quiz-item" key={quizKey}>
+                        <header><span>{String(index + 1).padStart(2, '0')}</span><button type="button" onClick={() => speakQuestion(material, item)} aria-label={`${index + 1}번 문제와 선택지 듣기`}>🔊 문제 듣기</button></header>
+                        <strong className="quiz-prompt" lang={meta.language}>{item.prompt}</strong>
+                        <div className="quiz-options">{item.options.map((option) => { const chosen = selected === option.label; const correct = option.label === correctLabel; return <button type="button" key={option.label} disabled={Boolean(selected)} className={chosen ? correct ? 'is-correct' : 'is-wrong' : selected && correct ? 'is-answer' : ''} onClick={() => void chooseQuizOption(material, item, index, option.label)}><b>{option.label}</b><span>{option.text}</span>{chosen && <i aria-label={correct ? '정답' : '오답'}>{correct ? '○' : '×'}</i>}</button>; })}</div>
+                        {selected && <div className={`quiz-result ${selected === correctLabel ? 'correct' : 'wrong'}`}><strong>{selected === correctLabel ? '정답이에요!' : `오답이에요. 정답은 ${correctLabel}예요.`}</strong>{selected !== correctLabel && <small>{authState === 'authenticated' ? '오답 기록에 자동 저장했어요.' : '로그인하면 오답 기록이 자동 저장돼요.'}</small>}<p>{item.explanation}</p></div>}
+                      </article> : <details className="material-item" key={quizKey}><summary><span>{String(index + 1).padStart(2, '0')}</span><div><strong lang={meta.language}>{item.prompt}</strong></div></summary><div className="material-answer"><button className="question-listen" type="button" onClick={() => speakQuestion(material, item)}>🔊 문제 듣기</button><div><span>정답</span><p>{item.answer}</p></div>{item.explanation && <div><span>설명</span><p>{item.explanation}</p></div>}</div></details>;
+                    })}</div> : <p className="material-unavailable">상세 학습 내용은 준비 중이에요.</p>}
                   </div>
                 </details>
               ); })}
