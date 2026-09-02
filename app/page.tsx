@@ -81,6 +81,7 @@ function readMaterials(value: unknown): StudyMaterial[] {
 function formatKorean(value: string) { const date = toLocalDate(value); return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일 ${days[date.getDay()]}요일`; }
 function formatShort(value: string) { const date = toLocalDate(value); return `${date.getMonth() + 1}월 ${date.getDate()}일`; }
 function formatCreated(value: string) { return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)); }
+function validDashboardDate(value: string) { return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(toLocalDate(value).valueOf()); }
 
 function Marker() { return <span className="accordion-marker" aria-hidden="true">⌄</span>; }
 
@@ -95,6 +96,7 @@ export default function Home() {
   const today = useMemo(() => kstToday(), []);
   const currentWeekStart = useMemo(() => getWeek(today)[0], [today]);
   const [selectedDate, setSelectedDate] = useState(today);
+  const [focusedMaterialId, setFocusedMaterialId] = useState('');
   const [logWeekStart, setLogWeekStart] = useState(currentWeekStart);
   const [plans, setPlans] = useState<StudyPlan[]>([]);
   const [overduePlans, setOverduePlans] = useState<StudyPlan[]>([]);
@@ -145,6 +147,14 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void loadDashboard(); }, [loadDashboard]);
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const date = params.get('date') ?? '';
+    // Restore shareable plan links after hydration without rendering different server/client markup.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (validDashboardDate(date)) setSelectedDate(date);
+    setFocusedMaterialId(params.get('material') ?? '');
+  }, []);
+  useEffect(() => {
     let active = true;
     void fetch('/api/dashboard/session', { cache: 'no-store' })
       .then(async (response) => response.ok ? response.json() as Promise<{ authenticated?: boolean; email?: string }> : { authenticated: false, email: undefined })
@@ -157,6 +167,12 @@ export default function Home() {
     return () => { active = false; };
   }, []);
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(''), 4200); return () => clearTimeout(timer); }, [notice]);
+  useEffect(() => {
+    if (!focusedMaterialId || loading) return;
+    const material = materials.find((item) => item.id === focusedMaterialId);
+    if (!material) return;
+    requestAnimationFrame(() => document.getElementById(`material-${focusedMaterialId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  }, [focusedMaterialId, loading, materials]);
 
   const studiedThisWeek = new Set(completedDates).size;
   const weekPercent = Math.round((studiedThisWeek / 7) * 100);
@@ -164,6 +180,20 @@ export default function Home() {
   const sortedMaterials = [...materials].sort((a, b) => materialOrder.indexOf(a.kind) - materialOrder.indexOf(b.kind));
   const scoreProgress = goal && latestScore ? Math.min(100, Math.round((latestScore.score / Math.max(goal.targetScore, 1)) * 100)) : 0;
   const remainingScore = goal && latestScore ? goal.targetScore - latestScore.score : null;
+  const englishGoalDate = shiftDate(today, 30);
+
+  function openPlanMaterial(plan: StudyPlan) {
+    if (!plan.id.startsWith('content:')) {
+      setNotice('직접 만든 일정에는 아직 연결된 학습 자료가 없어요.');
+      return;
+    }
+    const materialId = plan.id.slice('content:'.length);
+    const params = new URLSearchParams(window.location.search);
+    params.set('date', plan.planDate);
+    params.set('material', materialId);
+    window.history.pushState({}, '', `${window.location.pathname}?${params}`);
+    setFocusedMaterialId(materialId);
+  }
 
   function requireAdmin(): boolean {
     if (authState === 'authenticated') return true;
@@ -285,10 +315,10 @@ export default function Home() {
             <div className="accordion-body"><button className="time-badge add-plan" onClick={() => openEditor('plan')}>＋ 일정 추가</button>
               {loading ? <div className="empty-state">일정을 불러오는 중...</div> : plans.length ? plans.map((plan) => (
                 <article className="plan-row" key={plan.id}>
-                  <div className={`plan-item ${plan.completed ? 'is-complete' : ''}`}>
+                  <button className={`plan-item ${plan.completed ? 'is-complete' : ''}`} onClick={() => openPlanMaterial(plan)} aria-label={`${plan.title} 학습 자료 보기`}>
                     <span className={`part-badge ${categoryClass[plan.category] ?? 'green'}`}>{plan.completed === 1 ? '✓' : plan.completed === 2 ? '↗' : categoryLabel[plan.category] ?? plan.category}</span>
                     <div><strong>{plan.title}</strong><p>{plan.completed === 2 ? '다른 날짜에 재계획됨' : plan.detail || '세부 메모 없음'}</p></div><span className="plan-time">{plan.minutes}분</span>
-                  </div>
+                  </button>
                   {plan.completed === 0 && <button className="small-action" onClick={() => openCompletion({ type: 'plan', id: plan.id, title: plan.title, part: plan.category, minutes: plan.minutes, date: plan.planDate })}>학습 완료 기록</button>}
                   {plan.completed === 1 && <button className="small-action subtle" onClick={() => void undoPlan(plan)}>완료 취소</button>}
                   <button className="delete-button plan-delete" onClick={() => void deleteItem(plan.id, 'plan')} aria-label={`${plan.title} 일정 삭제`}>×</button>
@@ -300,8 +330,13 @@ export default function Home() {
           </details>
 
           <details className="accordion-card score-card" key={`goal-${selectedDate}`}>
-            <summary className="score-summary"><div><p className="mini-label">TOEIC GOAL</p><h2>TOEIC 목표</h2></div><span>{goal ? `${goal.targetScore}점 · ${dDay(goal.examDate, today)}` : '목표 설정하기'} <Marker /></span></summary>
+            <summary className="score-summary"><div><p className="mini-label">MY GOALS</p><h2>학습 목표</h2><div className="goal-tags"><b>영어 말하기</b><b>JLPT N5</b><b>TOEIC</b></div></div><span>3개 목표 <Marker /></span></summary>
             <div className="accordion-body">
+              <div className="goal-list">
+                <article><span>한 달 집중</span><strong>영어로 자기소개·업무 소개</strong><small>{formatShort(englishGoalDate)}까지 · 막힘없이 말하기</small></article>
+                <article><span>12월 자격증</span><strong>JLPT N5 합격</strong><small>12월 6일 시험 · {dDay('2026-12-06', today)}</small></article>
+                <article><span>점수 목표</span><strong>{goal ? `TOEIC ${goal.targetScore}점` : 'TOEIC 목표 설정'}</strong><small>{goal ? `${goal.examDate} · ${dDay(goal.examDate, today)}` : '목표 점수와 시험일을 정해 주세요'}</small></article>
+              </div>
               {goal ? <><div className="score-numbers"><strong>{goal.targetScore}</strong><span>점</span></div><div className="score-track"><i style={{ width: `${scoreProgress}%` }} /></div>
                 <div className="score-meta"><span>{latestScore ? `최근 ${latestScore.score}점` : '최근 성적 없음'}</span><strong>{remainingScore === null ? '성적을 기록해 주세요' : remainingScore > 0 ? `${remainingScore}점 남음` : remainingScore === 0 ? '목표 달성' : `${Math.abs(remainingScore)}점 초과 달성`}</strong></div>
                 {latestScore && <p className="score-source">{latestScore.scoreDate} · {scoreTypeLabels[latestScore.scoreType] ?? latestScore.scoreType}{latestScore.source ? ` · ${latestScore.source}` : ''}</p>}
@@ -316,7 +351,7 @@ export default function Home() {
           <div className="accordion-body">
             {loading ? <div className="empty-state material-empty">예약 자료를 불러오는 중...</div> : sortedMaterials.length ? <div className="materials-grid">
               {sortedMaterials.map((material) => { const meta = materialKind[material.kind]; const payload = readPayload(material.body); const audioAssets = material.assets.filter((asset) => asset.contentType.startsWith('audio/')); return (
-                <details className={`material-card ${material.kind}`} key={material.id}>
+                <details className={`material-card ${material.kind} ${focusedMaterialId === material.id ? 'is-focused' : ''}`} id={`material-${material.id}`} open={focusedMaterialId === material.id || undefined} key={material.id}>
                   <summary className="material-card-summary"><div><span className="material-kind">{meta.label}</span><small>{material.status === 'completed' ? '완료' : material.status === 'in_progress' ? '학습 중' : meta.description}</small></div><strong>{material.title}</strong><span>{payload?.items.length ?? 0}개 <Marker /></span></summary>
                   <div className="material-card-body"><p className="material-summary">{material.summary}</p>
                     <div className="material-actions">{material.status === 'ready' && <button onClick={() => void startMaterial(material)}>학습 시작</button>}<button onClick={() => openCompletion({ type: 'material', id: material.id, title: material.title, part: meta.part, minutes: meta.minutes, date: selectedDate })}>{material.status === 'completed' ? '완료 기록 수정' : '학습 완료 기록'}</button></div>
