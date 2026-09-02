@@ -112,6 +112,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
+  const [speakingMaterialId, setSpeakingMaterialId] = useState('');
   const [authState, setAuthState] = useState<AuthState>('checking');
   const [accessEmail, setAccessEmail] = useState('');
   const week = useMemo(() => getWeek(selectedDate), [selectedDate]);
@@ -354,7 +355,8 @@ export default function Home() {
                 <details className={`material-card ${material.kind} ${focusedMaterialId === material.id ? 'is-focused' : ''}`} id={`material-${material.id}`} open={focusedMaterialId === material.id || undefined} key={material.id}>
                   <summary className="material-card-summary"><div><span className="material-kind">{meta.label}</span><small>{material.status === 'completed' ? '완료' : material.status === 'in_progress' ? '학습 중' : meta.description}</small></div><strong>{material.title}</strong><span>{payload?.items.length ?? 0}개 <Marker /></span></summary>
                   <div className="material-card-body"><p className="material-summary">{material.summary}</p>
-                    <div className="material-actions">{material.status === 'ready' && <button onClick={() => void startMaterial(material)}>학습 시작</button>}<button onClick={() => openCompletion({ type: 'material', id: material.id, title: material.title, part: meta.part, minutes: meta.minutes, date: selectedDate })}>{material.status === 'completed' ? '완료 기록 수정' : '학습 완료 기록'}</button></div>
+                    <div className="material-actions">{payload && <button className="listen-button" onClick={() => speakMaterial(material, payload)} aria-pressed={speakingMaterialId === material.id}><span aria-hidden="true">{speakingMaterialId === material.id ? '■' : '▶'}</span>{speakingMaterialId === material.id ? ' 듣기 멈추기' : ` ${payload.items.length}문장 연속 듣기`}</button>}{material.status === 'ready' && <button onClick={() => void startMaterial(material)}>학습 시작</button>}<button onClick={() => openCompletion({ type: 'material', id: material.id, title: material.title, part: meta.part, minutes: meta.minutes, date: selectedDate })}>{material.status === 'completed' ? '완료 기록 수정' : '학습 완료 기록'}</button></div>
+                    {payload && <p className="listen-help">브라우저 음성으로 한 문장씩 천천히 읽어 드려요.</p>}
                     {payload?.speakingSentence && <div className="speaking-block"><span>말하기 한 문장</span><strong lang={meta.language}>{payload.speakingSentence}</strong>{payload.speakingMeaning && <p>{payload.speakingMeaning}</p>}</div>}
                     {audioAssets.map((asset) => <figure className="material-audio" key={asset.id}><figcaption>듣기 자료 · {asset.filename}</figcaption><audio controls preload="none" src={asset.url}>오디오를 재생할 수 없는 브라우저입니다.</audio></figure>)}
                     {payload?.items.length ? <div className="material-items">{payload.items.map((item, index) => <details className="material-item" key={`${material.id}-${index}`}><summary><span>{String(index + 1).padStart(2, '0')}</span><div><strong lang={meta.language}>{item.prompt}</strong>{item.options && <ol className="material-options">{item.options.map((option) => <li key={option.label}><b>{option.label}</b><span>{option.text}</span></li>)}</ol>}</div></summary><div className="material-answer"><div><span>정답</span><p>{item.answer}</p></div>{item.explanation && <div><span>설명</span><p>{item.explanation}</p></div>}</div></details>)}</div> : <p className="material-unavailable">상세 학습 내용은 준비 중이에요.</p>}
