@@ -227,6 +227,8 @@ button { cursor: pointer; }
 .today-card .add-plan { display: block; margin: 0 0 8px auto; }
 .plan-row { gap: 8px; }
 .plan-item { border: 0; }
+.plan-item { cursor: pointer; }
+.plan-item:focus-visible { border-radius: 12px; outline: 3px solid rgba(23,107,77,.18); outline-offset: 2px; }
 .small-action { flex: 0 0 auto; padding: 7px 9px; border: 1px solid var(--green); border-radius: 9px; background: #f0f6f2; color: var(--green); font-size: 10px; font-weight: 800; }
 .small-action.subtle { border-color: var(--line); background: transparent; color: var(--muted); }
 .review-notes { margin-top: 18px; padding: 14px; border-radius: 13px; background: #f5f1e8; }
@@ -239,6 +241,13 @@ button { cursor: pointer; }
 .score-summary { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .score-summary h2 { margin: 0; font: 600 21px Georgia, serif; }
 .score-summary > span { display: flex; align-items: center; gap: 8px; color: #d9e6e1; font-size: 11px; font-weight: 700; }
+.goal-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+.goal-tags b { padding: 4px 7px; border-radius: 6px; background: rgba(255,255,255,.1); color: #dff3e9; font-size: 9px; font-weight: 750; }
+.goal-list { display: grid; gap: 8px; }
+.goal-list article { display: grid; gap: 4px; padding: 12px 13px; border: 1px solid rgba(255,255,255,.12); border-radius: 10px; background: rgba(255,255,255,.06); }
+.goal-list article > span { color: #9ed9c2; font-size: 9px; font-weight: 800; letter-spacing: .04em; }
+.goal-list article strong { color: #fff; font-size: 12px; }
+.goal-list article small { color: #bcd1c9; font-size: 10px; }
 .score-card .accordion-marker { background: rgba(255,255,255,.13); color: #fff; }
 .score-card .accordion-body { border-top-color: rgba(255,255,255,.14); }
 .score-source { margin: 12px 0 0; color: #c4d8d0; font-size: 10px; line-height: 1.5; }
@@ -247,6 +256,7 @@ button { cursor: pointer; }
 .score-edit { width: 100%; margin-top: 17px; padding: 11px; border: 1px solid rgba(255,255,255,.25); border-radius: 11px; background: rgba(255,255,255,.1); color: #fff; font-size: 11px; font-weight: 800; }
 
 .material-card { padding: 0; }
+.material-card.is-focused { border-color: var(--material-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--material-accent) 14%, transparent); }
 .material-card-summary { display: grid; grid-template-columns: 1fr auto; gap: 9px 12px; align-items: center; padding: 18px; list-style: none; cursor: pointer; }
 .material-card-summary::-webkit-details-marker { display: none; }
 .material-card-summary > div { display: flex; align-items: center; gap: 8px; min-width: 0; }
