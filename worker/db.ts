@@ -125,6 +125,12 @@ export async function ensureAutomationSchema(env: WorkerEnv): Promise<void> {
       created_at TEXT NOT NULL
     )`),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_toeic_scores_date ON toeic_scores(score_date, created_at)'),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS quiz_attempts (
+      id TEXT PRIMARY KEY, material_id TEXT NOT NULL, item_index INTEGER NOT NULL,
+      selected_label TEXT NOT NULL, correct_label TEXT NOT NULL, prompt TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_quiz_attempts_material ON quiz_attempts(material_id, item_index)'),
   ]);
 }
 

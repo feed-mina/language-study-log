@@ -148,3 +148,13 @@ export const toeicScores = sqliteTable('toeic_scores', {
   source: text('source').notNull().default(''),
   createdAt: text('created_at').notNull(),
 }, (table) => [index('idx_toeic_scores_date').on(table.scoreDate, table.createdAt)]);
+
+export const quizAttempts = sqliteTable('quiz_attempts', {
+  id: text('id').primaryKey(),
+  materialId: text('material_id').notNull(),
+  itemIndex: integer('item_index').notNull(),
+  selectedLabel: text('selected_label').notNull(),
+  correctLabel: text('correct_label').notNull(),
+  prompt: text('prompt').notNull(),
+  createdAt: text('created_at').notNull(),
+}, (table) => [index('idx_quiz_attempts_material').on(table.materialId, table.itemIndex)]);
