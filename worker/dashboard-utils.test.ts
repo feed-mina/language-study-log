@@ -30,3 +30,12 @@ test('legacy TOEIC prompts are split into a question and four options', () => {
     { label: 'D', text: 'during' },
   ]);
 });
+
+test('legacy Japanese prompts are split into two clickable options without reading notes', () => {
+  const item = splitLegacyQuestion('「りんごをください」に合うものを選んでください。\nA. ひとつ\nB. ひとり\n読み: ひとつ / ひとり');
+  assert.equal(item.prompt, '「りんごをください」に合うものを選んでください。');
+  assert.deepEqual(item.options, [
+    { label: 'A', text: 'ひとつ' },
+    { label: 'B', text: 'ひとり' },
+  ]);
+});

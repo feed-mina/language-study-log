@@ -59,6 +59,11 @@ async function ensureSchema() {
       id TEXT PRIMARY KEY, score INTEGER NOT NULL, score_date TEXT NOT NULL, score_type TEXT NOT NULL,
       source TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
     )`),
+    database.prepare(`CREATE TABLE IF NOT EXISTS quiz_attempts (
+      id TEXT PRIMARY KEY, material_id TEXT NOT NULL, item_index INTEGER NOT NULL,
+      selected_label TEXT NOT NULL, correct_label TEXT NOT NULL, prompt TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`),
     database.prepare('CREATE INDEX IF NOT EXISTS idx_study_plans_date ON study_plans(plan_date)'),
     database.prepare('CREATE INDEX IF NOT EXISTS idx_study_logs_date ON study_logs(study_date)'),
     database.prepare('CREATE INDEX IF NOT EXISTS idx_study_logs_source ON study_logs(source_type, source_id)'),
@@ -118,7 +123,7 @@ export async function GET(request: Request) {
   const logStart = validDate(url.searchParams.get('logStart')) ? url.searchParams.get('logStart')! : (validDate(url.searchParams.get('start')) ? url.searchParams.get('start')! : calendarStart);
   const logEnd = validDate(url.searchParams.get('logEnd')) ? url.searchParams.get('logEnd')! : (validDate(url.searchParams.get('end')) ? url.searchParams.get('end')! : calendarEnd);
   const database = db();
-  const [plansResult, overdueResult, logsResult, datesResult, legacyResult, goalResult, latestScore, reviewResult] = await Promise.all([
+  const [plansResult, overdueResult, logsResult, datesResult, legacyResult, goalResult, latestScore, reviewResult, mistakeResult] = await Promise.all([
     database.prepare('SELECT * FROM study_plans WHERE plan_date = ? ORDER BY created_at ASC').bind(date).all<Row>(),
     database.prepare(`SELECT * FROM study_plans WHERE plan_date < ? AND completed = 0
       ORDER BY plan_date DESC, created_at ASC LIMIT 7`).bind(date).all<Row>(),
@@ -134,6 +139,9 @@ export async function GET(request: Request) {
     database.prepare(`SELECT title, study_date, note, confused_items FROM study_logs
       WHERE study_date <= ? AND source_type <> 'legacy' AND (note <> '' OR confused_items <> '')
       ORDER BY study_date DESC, created_at DESC LIMIT 5`).bind(date).all<Row>(),
+    database.prepare(`SELECT qa.*, sc.title AS material_title, sc.kind AS material_kind
+      FROM quiz_attempts qa JOIN study_content sc ON sc.id = qa.material_id
+      WHERE sc.content_date = ? ORDER BY qa.created_at DESC`).bind(date).all<Row>(),
   ]);
 
   return Response.json({
@@ -145,6 +153,7 @@ export async function GET(request: Request) {
     goal: goalResult ? { targetScore: goalResult.target_score, examDate: goalResult.exam_date, updatedAt: goalResult.updated_at } : null,
     latestScore: latestScore ? { score: latestScore.score, scoreDate: latestScore.score_date, scoreType: latestScore.score_type, source: latestScore.source } : null,
     reviewNotes: (reviewResult.results ?? []).map((row) => ({ title: row.title, studyDate: row.study_date, note: row.note, confusedItems: row.confused_items })),
+    quizMistakes: (mistakeResult.results ?? []).map((row) => ({ id: row.id, materialId: row.material_id, itemIndex: row.item_index, selectedLabel: row.selected_label, correctLabel: row.correct_label, prompt: row.prompt, materialTitle: row.material_title, materialKind: row.material_kind, createdAt: row.created_at })),
   });
 }
 
@@ -197,6 +206,15 @@ export async function POST(request: Request) {
           score = excluded.score, note = excluded.note, confused_items = excluded.confused_items, created_at = excluded.created_at`)
         .bind(logId, body.studyDate, categoryForMaterial(material.kind), material.title, minutes(body.minutes), text(body.score, 30), text(body.note, 300), material.id, material.title, text(body.confusedItems, 300), now),
     ]);
+  } else if (body.kind === 'quiz-attempt') {
+    const materialId = text(body.materialId, 80);
+    const itemIndex = Number(body.itemIndex);
+    const selectedLabel = text(body.selectedLabel, 1).toUpperCase();
+    const correctLabel = text(body.correctLabel, 1).toUpperCase();
+    if (!materialId || !Number.isInteger(itemIndex) || itemIndex < 0 || itemIndex > 20 || !/^[A-D]$/.test(selectedLabel) || !/^[A-D]$/.test(correctLabel)) return Response.json({ error: 'invalid quiz attempt' }, { status: 400 });
+    await database.prepare(`INSERT INTO quiz_attempts (id, material_id, item_index, selected_label, correct_label, prompt, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .bind(crypto.randomUUID(), materialId, itemIndex, selectedLabel, correctLabel, text(body.prompt, 500), now).run();
   } else {
     return Response.json({ error: 'invalid kind' }, { status: 400 });
   }

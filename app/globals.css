@@ -235,6 +235,19 @@ button { cursor: pointer; }
 .review-notes > strong { display: block; margin-bottom: 9px; color: var(--green); font-size: 11px; }
 .review-notes p { margin: 7px 0 0; color: #50615b; font-size: 11px; line-height: 1.45; }
 .review-notes p span { display: block; margin-bottom: 2px; color: var(--muted); font-size: 9px; }
+.mistake-notebook { margin-top: 18px; padding: 15px; border: 1px solid #f0d8d2; border-radius: 13px; background: #fff9f7; }
+.mistake-notebook > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mistake-notebook > header div { display: grid; gap: 3px; }
+.mistake-notebook > header span { color: #c95340; font-size: 8px; font-weight: 900; letter-spacing: .1em; }
+.mistake-notebook > header strong { font-size: 12px; }
+.mistake-notebook > header b { min-width: 28px; padding: 5px 7px; border-radius: 999px; background: #f9ded8; color: #a33b2d; font-size: 9px; text-align: center; }
+.mistake-notebook > p { margin: 11px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.mistake-notebook > div { display: grid; gap: 7px; margin-top: 11px; }
+.mistake-notebook article { padding: 10px; border-radius: 9px; background: #fff; }
+.mistake-notebook article span { color: #c95340; font-size: 8px; font-weight: 800; }
+.mistake-notebook article strong { display: block; margin-top: 4px; overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.mistake-notebook article p { margin: 6px 0 0; color: #a33b2d; font-size: 9px; font-weight: 800; }
+.mistake-notebook article i { margin: 0 4px; color: var(--muted); font-style: normal; }
 
 .score-card { padding: 28px; }
 .score-card > summary { color: #fff; }
@@ -277,6 +290,29 @@ button { cursor: pointer; }
 .material-options { display: grid; gap: 5px; margin: 9px 0 0; padding: 0; list-style: none; }
 .material-options li { display: grid; grid-template-columns: 22px 1fr; gap: 7px; align-items: start; padding: 6px 8px; border-radius: 8px; background: rgba(255,255,255,.72); color: #43534d; font-size: 10px; font-weight: 500; line-height: 1.4; }
 .material-options li b { color: var(--material-accent); }
+.quiz-item { padding: 13px; }
+.quiz-item header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.quiz-item header > span { color: var(--material-accent); font-size: 9px; font-weight: 900; }
+.quiz-item header button, .question-listen { padding: 6px 8px; border: 0; border-radius: 7px; background: var(--material-soft); color: var(--material-accent); font-size: 9px; font-weight: 800; }
+.quiz-prompt { display: block; margin: 10px 0 12px; font-size: 11px; line-height: 1.55; white-space: pre-wrap; }
+.quiz-options { display: grid; gap: 7px; }
+.quiz-options button { min-height: 42px; display: grid; grid-template-columns: 26px 1fr 24px; gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); text-align: left; }
+.quiz-options button:not(:disabled):hover { border-color: var(--material-accent); background: var(--material-soft); }
+.quiz-options button b { width: 25px; height: 25px; display: grid; place-items: center; border-radius: 999px; background: var(--material-soft); color: var(--material-accent); }
+.quiz-options button span { font-size: 10px; line-height: 1.45; }
+.quiz-options button i { font-size: 21px; font-style: normal; font-weight: 900; text-align: center; }
+.quiz-options button.is-correct { border-color: #27845f; background: #e9f8f0; color: #176b4d; }
+.quiz-options button.is-wrong { border-color: #d75c4a; background: #fff0ed; color: #a33b2d; }
+.quiz-options button.is-answer { border-color: #64a98c; background: #f0faf5; }
+.quiz-options button:disabled { cursor: default; opacity: 1; }
+.quiz-result { margin-top: 10px; padding: 11px; border-radius: 9px; background: #edf8f2; }
+.quiz-result.wrong { background: #fff1ee; }
+.quiz-result strong, .quiz-result small { display: block; }
+.quiz-result strong { color: var(--green); font-size: 10px; }
+.quiz-result.wrong strong { color: #a33b2d; }
+.quiz-result small { margin-top: 3px; color: var(--muted); font-size: 9px; }
+.quiz-result p { margin: 8px 0 0; color: #53635d; font-size: 10px; line-height: 1.55; }
+.question-listen { justify-self: start; }
 
 .log-week-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 13px; }
 .log-week-toolbar > strong { font: 600 16px Georgia, serif; }

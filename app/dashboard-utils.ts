@@ -54,11 +54,26 @@ export function dDay(examDate: string, today: string): string {
 }
 
 export function splitLegacyQuestion(prompt: string): { prompt: string; options?: StudyOption[] } {
-  const match = prompt.match(/^([\s\S]*?)(?:\s+)A\.\s*([\s\S]*?)(?:\s+)B\.\s*([\s\S]*?)(?:\s+)C\.\s*([\s\S]*?)(?:\s+)D\.\s*([\s\S]+)$/);
-  if (!match) return { prompt };
-  const question = match[1].trim();
-  const texts = match.slice(2).map((text) => text.trim());
-  if (!question || texts.some((text) => !text)) return { prompt };
+  const inline = prompt.match(/^([\s\S]*?)(?:\s+)A\.\s*([\s\S]*?)(?:\s+)B\.\s*([\s\S]*?)(?:\s+)C\.\s*([\s\S]*?)(?:\s+)D\.\s*([\s\S]+)$/);
+  if (inline) {
+    const question = inline[1].trim();
+    const texts = inline.slice(2).map((text) => text.trim());
+    const labels = ['A', 'B', 'C', 'D'] as const;
+    if (question && texts.every(Boolean)) return { prompt: question, options: labels.map((label, index) => ({ label, text: texts[index] })) };
+  }
+  const lines = prompt.split('\n').map((line) => line.trim()).filter(Boolean);
+  const firstOption = lines.findIndex((line) => /^A\.\s*\S/.test(line));
+  if (firstOption < 0) return { prompt };
+  const optionLines = lines.slice(firstOption).filter((line) => !/^읽기\s*:/.test(line));
   const labels = ['A', 'B', 'C', 'D'] as const;
-  return { prompt: question, options: labels.map((label, index) => ({ label, text: texts[index] })) };
+  const options: StudyOption[] = [];
+  for (const label of labels) {
+    const line = optionLines.find((candidate) => candidate.startsWith(`${label}.`));
+    if (!line) break;
+    const text = line.slice(2).trim();
+    if (!text) return { prompt };
+    options.push({ label, text });
+  }
+  const question = lines.slice(0, firstOption).join('\n').trim();
+  return question && options.length >= 2 ? { prompt: question, options } : { prompt };
 }
