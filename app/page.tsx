@@ -394,8 +394,8 @@ export default function Home() {
           </div>
         </details>
 
-        {!loading && <details className="accordion-card recovery-card" key={`recovery-${today}`} open={recovery.totalCount > 0}>
-          <summary className="accordion-summary"><div><p className="mini-label">GENTLE RECOVERY</p><h2>놓친 공부 복구함</h2><p>{recovery.totalCount}개 미완료 · 자동 이월 없이 하나씩 선택</p></div><Marker /></summary>
+        {!loading && <details className="accordion-card recovery-card" key={`recovery-${today}`}>
+          <summary className="accordion-summary"><div><p className="mini-label">GENTLE RECOVERY</p><h2>놓친 공부 채우기</h2><p>{recovery.totalCount}개 미완료 · 자동 이월 없이 하나씩 선택</p></div><Marker /></summary>
           <div className="accordion-body">
             <div className="recovery-stats" aria-label="미완료 요약">
               <div><span>전체 미완료</span><strong>{recovery.totalCount}개</strong></div>

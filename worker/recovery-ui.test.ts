@@ -21,3 +21,9 @@ test('recovery UI includes period labels and a single-column mobile summary', ()
   assert.match(styles, /\.recovery-stats\s*{[^}]*grid-template-columns:\s*repeat\(3\s*,/);
   assert.match(styles, /@media \(max-width: 460px\)[\s\S]*\.recovery-stats\s*{\s*grid-template-columns:\s*1fr;/);
 });
+
+test('recovery accordion uses the requested title and starts closed', () => {
+  assert.match(page, /<h2>놓친 공부 채우기<\/h2>/);
+  assert.match(page, /<details className="accordion-card recovery-card"/);
+  assert.doesNotMatch(page, /<details className="accordion-card recovery-card"[^>]*\sopen=/);
+});
