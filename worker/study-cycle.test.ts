@@ -133,3 +133,59 @@ test('plan commands preserve the linked log, root plan, history, archive state, 
   assert.equal(view.recovery.totalCount, 1);
   assert.equal(view.recovery.oldestPlanDate, '2026-09-08');
 });
+
+test('integration records resolve original material links through a rescheduled root plan', async (context) => {
+  const mf = new Miniflare({
+    modules: true,
+    script: 'export default { fetch() { return new Response("ok"); } }',
+    compatibilityDate: '2026-05-22',
+    d1Databases: ['DB'],
+  });
+  context.after(() => mf.dispose());
+  const database = await mf.getD1Database('DB');
+  await ensureStudyCycleSchema(database);
+
+  const materialId = 'content:chatgpt:2026-08-25:english';
+  const rootPlanId = `content:${materialId}`;
+  await database.batch([
+    database.prepare(`INSERT INTO study_content
+      (id, content_date, kind, title, summary, body_json, model, status, created_at, updated_at)
+      VALUES (?, '2026-08-25', 'english', 'Original material', '', '{}', 'test', 'ready', ?, ?)`).bind(materialId, now, now),
+    database.prepare(`INSERT INTO study_plans
+      (id, plan_date, category, title, detail, minutes, completed, source_plan_id, status, root_plan_id, created_at, updated_at, archived_at, archive_reason)
+      VALUES (?, '2026-08-25', 'ENGLISH', 'Original material', '', 20, 2, NULL, 'rescheduled', ?, ?, ?, NULL, '')`).bind(rootPlanId, rootPlanId, now, now),
+    database.prepare(`INSERT INTO study_plans
+      (id, plan_date, category, title, detail, minutes, completed, source_plan_id, status, root_plan_id, created_at, updated_at, archived_at, archive_reason)
+      VALUES ('child-plan', '2026-09-08', 'ENGLISH', 'Original material', '', 20, 0, ?, 'planned', ?, ?, ?, NULL, '')`).bind(rootPlanId, rootPlanId, now, now),
+    database.prepare(`INSERT INTO study_logs
+      (id, study_date, part, title, minutes, score, note, source_type, source_id, source_label, confused_items, created_at)
+      VALUES ('direct-material-log', '2026-09-08', 'ENGLISH', 'Direct completion', 20, '', '', 'material', ?, 'Original material', '', ?)`).bind(materialId, now),
+  ]);
+
+  const linked = await database.prepare(`SELECT plans.root_plan_id, substr(plans.root_plan_id, 9) AS candidate_id,
+      material.id AS material_id, material.content_date AS material_date
+    FROM study_plans AS plans
+    LEFT JOIN study_content AS material ON material.id = substr(plans.root_plan_id, 9)
+    WHERE plans.id = 'child-plan'`).first<{ root_plan_id: string; candidate_id: string; material_id: string; material_date: string }>();
+  assert.deepEqual(linked, { root_plan_id: rootPlanId, candidate_id: materialId, material_id: materialId, material_date: '2026-08-25' });
+
+  const completed = await executePlanCommand(database, {
+    requestId: 'request:material:complete', command: 'complete', planId: 'child-plan',
+  }, now);
+  const replayed = await executePlanCommand(database, {
+    requestId: 'request:material:complete', command: 'complete', planId: 'child-plan',
+  }, now);
+  const expectedPath = '/?date=2026-08-25&material=content%3Achatgpt%3A2026-08-25%3Aenglish';
+
+  assert.equal(completed.plan.materialId, materialId);
+  assert.equal(completed.plan.openPath, expectedPath);
+  assert.equal(replayed.plan.materialId, materialId);
+  assert.equal(replayed.plan.openPath, expectedPath);
+
+  const view = await readIntegrationStudy(database, '2026-09-08');
+  assert.equal(view.todayPlans[0]?.materialId, materialId);
+  assert.equal(view.todayPlans[0]?.openPath, expectedPath);
+  assert.equal(view.completedLogs.length, 2);
+  assert.ok(view.completedLogs.every((log) => log.materialId === materialId));
+  assert.ok(view.completedLogs.every((log) => log.openPath === expectedPath));
+});

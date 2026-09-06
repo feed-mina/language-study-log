@@ -19,6 +19,8 @@ type PlanRow = {
   updated_at: string;
   archived_at: string | null;
   archive_reason: string;
+  material_id?: string | null;
+  material_date?: string | null;
 };
 
 type LogRow = {
@@ -34,6 +36,8 @@ type LogRow = {
   source_label: string;
   confused_items: string;
   created_at: string;
+  material_id?: string | null;
+  material_date?: string | null;
 };
 
 type EventRow = {
@@ -57,6 +61,8 @@ export type StudyPlanView = {
   updatedAt: string;
   archivedAt: string | null;
   archiveReason: string;
+  materialId?: string;
+  openPath?: string;
 };
 
 export type StudyLogView = {
@@ -72,6 +78,8 @@ export type StudyLogView = {
   sourceLabel: string;
   confusedItems: string;
   createdAt: string;
+  materialId?: string;
+  openPath?: string;
 };
 
 export type RecoverySummary = {
@@ -131,6 +139,11 @@ export async function ensureStudyCycleSchema(database: D1Database): Promise<void
       source_type TEXT NOT NULL DEFAULT 'legacy', source_id TEXT, source_label TEXT NOT NULL DEFAULT '',
       confused_items TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
     )`),
+    database.prepare(`CREATE TABLE IF NOT EXISTS study_content (
+      id TEXT PRIMARY KEY, content_date TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL,
+      summary TEXT NOT NULL DEFAULT '', body_json TEXT NOT NULL, model TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'ready', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    )`),
     database.prepare(`CREATE TABLE IF NOT EXISTS study_plan_events (
       id TEXT PRIMARY KEY, plan_id TEXT NOT NULL, event_type TEXT NOT NULL, from_status TEXT,
       to_status TEXT NOT NULL, related_plan_id TEXT, target_date TEXT, idempotency_key TEXT,
@@ -140,6 +153,8 @@ export async function ensureStudyCycleSchema(database: D1Database): Promise<void
     database.prepare('CREATE INDEX IF NOT EXISTS idx_study_plans_status_date ON study_plans(status, plan_date)'),
     database.prepare('CREATE INDEX IF NOT EXISTS idx_study_logs_date ON study_logs(study_date)'),
     database.prepare('CREATE INDEX IF NOT EXISTS idx_study_logs_source ON study_logs(source_type, source_id)'),
+    database.prepare('CREATE UNIQUE INDEX IF NOT EXISTS uq_study_content_date_kind ON study_content(content_date, kind)'),
+    database.prepare('CREATE INDEX IF NOT EXISTS idx_study_content_date ON study_content(content_date)'),
     database.prepare('CREATE UNIQUE INDEX IF NOT EXISTS uq_study_plan_events_idempotency ON study_plan_events(idempotency_key)'),
     database.prepare('CREATE INDEX IF NOT EXISTS idx_study_plan_events_plan_created ON study_plan_events(plan_id, created_at)'),
   ]);
@@ -162,6 +177,27 @@ function statusFromRow(row: Pick<PlanRow, 'status' | 'completed'>): PlanStatus {
   return 'planned';
 }
 
+export function materialOpenPath(materialId: string | null | undefined, materialDate: string | null | undefined): string | null {
+  if (!materialId || materialId.length > 100 || !isDate(materialDate)) return null;
+  return `/?date=${encodeURIComponent(materialDate)}&material=${encodeURIComponent(materialId)}`;
+}
+
+function materialLink(row: { material_id?: string | null; material_date?: string | null }): { materialId?: string; openPath?: string } {
+  const openPath = materialOpenPath(row.material_id, row.material_date);
+  return row.material_id && openPath ? { materialId: row.material_id, openPath } : {};
+}
+
+async function materialLinkForPlan(database: D1Database, planId: string): Promise<{ materialId?: string; openPath?: string }> {
+  const row = await database.prepare(`SELECT material.id AS material_id, material.content_date AS material_date
+    FROM study_plans AS plans
+    LEFT JOIN study_content AS material ON material.id = CASE
+      WHEN plans.root_plan_id LIKE 'content:%' THEN substr(plans.root_plan_id, 9)
+      WHEN plans.id LIKE 'content:%' THEN substr(plans.id, 9)
+      ELSE NULL END
+    WHERE plans.id = ? LIMIT 1`).bind(planId).first<{ material_id: string | null; material_date: string | null }>();
+  return row ? materialLink(row) : {};
+}
+
 function mapPlan(row: PlanRow): StudyPlanView {
   return {
     id: row.id,
@@ -177,6 +213,7 @@ function mapPlan(row: PlanRow): StudyPlanView {
     updatedAt: row.updated_at || row.created_at,
     archivedAt: row.archived_at,
     archiveReason: row.archive_reason,
+    ...materialLink(row),
   };
 }
 
@@ -194,6 +231,7 @@ function mapLog(row: LogRow): StudyLogView {
     sourceLabel: row.source_label,
     confusedItems: row.confused_items,
     createdAt: row.created_at,
+    ...materialLink(row),
   };
 }
 
@@ -267,13 +305,41 @@ export async function readIntegrationStudy(database: D1Database, date: string) {
   if (!isDate(date)) throw new StudyCycleError(400, 'INVALID_DATE', 'date must use YYYY-MM-DD');
   const week = weekRange(date);
   const [todayResult, overdueResult, archivedResult, logsResult] = await Promise.all([
-    database.prepare("SELECT * FROM study_plans WHERE plan_date = ? AND status <> 'archived' ORDER BY created_at ASC")
+    database.prepare(`SELECT plans.*, material.id AS material_id, material.content_date AS material_date
+      FROM study_plans AS plans
+      LEFT JOIN study_content AS material ON material.id = CASE
+        WHEN plans.root_plan_id LIKE 'content:%' THEN substr(plans.root_plan_id, 9)
+        WHEN plans.id LIKE 'content:%' THEN substr(plans.id, 9)
+        ELSE NULL END
+      WHERE plans.plan_date = ? AND plans.status <> 'archived' ORDER BY plans.created_at ASC`)
       .bind(date).all<PlanRow>(),
-    database.prepare("SELECT * FROM study_plans WHERE plan_date < ? AND status = 'planned' ORDER BY plan_date ASC, created_at ASC")
+    database.prepare(`SELECT plans.*, material.id AS material_id, material.content_date AS material_date
+      FROM study_plans AS plans
+      LEFT JOIN study_content AS material ON material.id = CASE
+        WHEN plans.root_plan_id LIKE 'content:%' THEN substr(plans.root_plan_id, 9)
+        WHEN plans.id LIKE 'content:%' THEN substr(plans.id, 9)
+        ELSE NULL END
+      WHERE plans.plan_date < ? AND plans.status = 'planned' ORDER BY plans.plan_date ASC, plans.created_at ASC`)
       .bind(date).all<PlanRow>(),
-    database.prepare("SELECT * FROM study_plans WHERE status = 'archived' ORDER BY archived_at DESC, created_at DESC LIMIT 50")
+    database.prepare(`SELECT plans.*, material.id AS material_id, material.content_date AS material_date
+      FROM study_plans AS plans
+      LEFT JOIN study_content AS material ON material.id = CASE
+        WHEN plans.root_plan_id LIKE 'content:%' THEN substr(plans.root_plan_id, 9)
+        WHEN plans.id LIKE 'content:%' THEN substr(plans.id, 9)
+        ELSE NULL END
+      WHERE plans.status = 'archived' ORDER BY plans.archived_at DESC, plans.created_at DESC LIMIT 50`)
       .all<PlanRow>(),
-    database.prepare("SELECT * FROM study_logs WHERE study_date BETWEEN ? AND ? AND source_type <> 'legacy' ORDER BY study_date ASC, created_at ASC")
+    database.prepare(`SELECT logs.*, material.id AS material_id, material.content_date AS material_date
+      FROM study_logs AS logs
+      LEFT JOIN study_plans AS source_plan ON logs.source_type = 'plan' AND source_plan.id = logs.source_id
+      LEFT JOIN study_content AS material ON material.id = CASE
+        WHEN source_plan.root_plan_id LIKE 'content:%' THEN substr(source_plan.root_plan_id, 9)
+        WHEN source_plan.id LIKE 'content:%' THEN substr(source_plan.id, 9)
+        WHEN logs.source_type = 'material' AND EXISTS (SELECT 1 FROM study_content AS direct_content WHERE direct_content.id = logs.source_id) THEN logs.source_id
+        WHEN logs.source_id LIKE 'content:%' THEN substr(logs.source_id, 9)
+        ELSE NULL END
+      WHERE logs.study_date BETWEEN ? AND ? AND logs.source_type <> 'legacy'
+      ORDER BY logs.study_date ASC, logs.created_at ASC`)
       .bind(week.start, week.end).all<LogRow>(),
   ]);
   const todayPlans = (todayResult.results ?? []).map(mapPlan);
@@ -359,9 +425,22 @@ export async function executePlanCommand(
 ): Promise<PlanCommandResult> {
   validateCommandInput(input);
   const prior = await existingEvent(database, input.requestId);
-  if (prior) return replayResult(prior, input);
+  if (prior) {
+    const replayed = replayResult(prior, input);
+    return {
+      ...replayed,
+      plan: { ...replayed.plan, ...await materialLinkForPlan(database, replayed.plan.id) },
+      ...(replayed.createdPlan ? { createdPlan: { ...replayed.createdPlan, ...await materialLinkForPlan(database, replayed.createdPlan.id) } } : {}),
+    };
+  }
 
-  const row = await database.prepare('SELECT * FROM study_plans WHERE id = ? LIMIT 1').bind(input.planId).first<PlanRow>();
+  const row = await database.prepare(`SELECT plans.*, material.id AS material_id, material.content_date AS material_date
+    FROM study_plans AS plans
+    LEFT JOIN study_content AS material ON material.id = CASE
+      WHEN plans.root_plan_id LIKE 'content:%' THEN substr(plans.root_plan_id, 9)
+      WHEN plans.id LIKE 'content:%' THEN substr(plans.id, 9)
+      ELSE NULL END
+    WHERE plans.id = ? LIMIT 1`).bind(input.planId).first<PlanRow>();
   if (!row) throw new StudyCycleError(404, 'PLAN_NOT_FOUND', 'plan not found');
   const plan = mapPlan(row);
   if (!transitionAllowed(input.command, plan.status)) {
@@ -448,12 +527,25 @@ export async function executePlanCommand(
     await database.batch(statements);
   } catch (error) {
     const replay = await existingEvent(database, input.requestId);
-    if (replay) return replayResult(replay, input);
+    if (replay) {
+      const replayed = replayResult(replay, input);
+      return {
+        ...replayed,
+        plan: { ...replayed.plan, ...await materialLinkForPlan(database, replayed.plan.id) },
+        ...(replayed.createdPlan ? { createdPlan: { ...replayed.createdPlan, ...await materialLinkForPlan(database, replayed.createdPlan.id) } } : {}),
+      };
+    }
     throw error;
   }
 
   const stored = await database.prepare('SELECT * FROM study_plans WHERE id = ? LIMIT 1').bind(plan.id).first<PlanRow>();
   if (!stored) throw new StudyCycleError(500, 'PLAN_UPDATE_FAILED', 'updated plan could not be read');
-  const result: PlanCommandResult = { ok: true, replayed: false, command: input.command, plan: mapPlan(stored), ...(createdPlan ? { createdPlan } : {}) };
+  const result: PlanCommandResult = {
+    ok: true,
+    replayed: false,
+    command: input.command,
+    plan: { ...mapPlan(stored), ...materialLink(row) },
+    ...(createdPlan ? { createdPlan } : {}),
+  };
   return result;
 }
