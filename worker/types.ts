@@ -112,14 +112,21 @@ const OPTION_LABELS = ['A', 'B', 'C', 'D'] as const;
 
 export function splitLegacyOptions(prompt: string): { prompt: string; options?: StudyOption[] } {
   const match = prompt.match(/^([\s\S]*?)(?:\s+)A\.\s*([\s\S]*?)(?:\s+)B\.\s*([\s\S]*?)(?:\s+)C\.\s*([\s\S]*?)(?:\s+)D\.\s*([\s\S]+)$/);
-  if (!match) return { prompt };
-  const question = match[1].trim();
-  const optionTexts = match.slice(2).map((part) => part.trim());
-  if (!question || optionTexts.some((part) => !part)) return { prompt };
-  return {
-    prompt: question,
-    options: OPTION_LABELS.map((label, index) => ({ label, text: optionTexts[index] })),
-  };
+  if (match) {
+    const question = match[1].trim();
+    const optionTexts = match.slice(2).map((part) => part.trim());
+    if (question && !optionTexts.some((part) => !part)) return {
+      prompt: question,
+      options: OPTION_LABELS.map((label, index) => ({ label, text: optionTexts[index] })),
+    };
+  }
+
+  const circled = prompt.match(/^([\s\S]*?)(?:\s*)①\s*([\s\S]*?)(?:\s*)②\s*([\s\S]*?)(?:(?:\s*)③\s*([\s\S]*?))?(?:(?:\s*)④\s*([\s\S]*?))?$/);
+  if (!circled) return { prompt };
+  const question = circled[1].trim();
+  const optionTexts = circled.slice(2).filter((part): part is string => typeof part === 'string').map((part) => part.trim());
+  if (!question || optionTexts.length < 2 || optionTexts.some((part) => !part)) return { prompt };
+  return { prompt: question, options: optionTexts.map((text, index) => ({ label: OPTION_LABELS[index], text })) };
 }
 
 function asOptions(value: unknown): StudyOption[] | undefined {

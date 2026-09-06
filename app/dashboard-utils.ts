@@ -55,10 +55,17 @@ export function dDay(examDate: string, today: string): string {
 
 export function splitLegacyQuestion(prompt: string): { prompt: string; options?: StudyOption[] } {
   const match = prompt.match(/^([\s\S]*?)(?:\s+)A\.\s*([\s\S]*?)(?:\s+)B\.\s*([\s\S]*?)(?:\s+)C\.\s*([\s\S]*?)(?:\s+)D\.\s*([\s\S]+)$/);
-  if (!match) return { prompt };
-  const question = match[1].trim();
-  const texts = match.slice(2).map((text) => text.trim());
-  if (!question || texts.some((text) => !text)) return { prompt };
   const labels = ['A', 'B', 'C', 'D'] as const;
-  return { prompt: question, options: labels.map((label, index) => ({ label, text: texts[index] })) };
+  if (match) {
+    const question = match[1].trim();
+    const texts = match.slice(2).map((text) => text.trim());
+    if (question && !texts.some((text) => !text)) return { prompt: question, options: labels.map((label, index) => ({ label, text: texts[index] })) };
+  }
+
+  const circled = prompt.match(/^([\s\S]*?)(?:\s*)①\s*([\s\S]*?)(?:\s*)②\s*([\s\S]*?)(?:(?:\s*)③\s*([\s\S]*?))?(?:(?:\s*)④\s*([\s\S]*?))?$/);
+  if (!circled) return { prompt };
+  const question = circled[1].trim();
+  const texts = circled.slice(2).filter((text): text is string => typeof text === 'string').map((text) => text.trim());
+  if (!question || texts.length < 2 || texts.some((text) => !text)) return { prompt };
+  return { prompt: question, options: texts.map((text, index) => ({ label: labels[index], text })) };
 }

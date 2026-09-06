@@ -30,3 +30,12 @@ test('legacy TOEIC prompts are split into a question and four options', () => {
     { label: 'D', text: 'during' },
   ]);
 });
+
+test('legacy Japanese circled choices are split and labelled for listening', () => {
+  const item = splitLegacyQuestion('図書館はどこにありますか。 ① 図書館はどこにありますか。 ② 図書館はどこにいますか。');
+  assert.equal(item.prompt, '図書館はどこにありますか。');
+  assert.deepEqual(item.options, [
+    { label: 'A', text: '図書館はどこにありますか。' },
+    { label: 'B', text: '図書館はどこにいますか。' },
+  ]);
+});
