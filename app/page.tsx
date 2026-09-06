@@ -117,7 +117,8 @@ function toggleDetailsWithKeyboard(event: ReactKeyboardEvent<HTMLElement>) {
  * 목표 언어 음성에는 한글 안내를 넣지 않아 발음이 섞이지 않게 한다.
  */
 function targetSpeechText(value: string, language: 'en-US' | 'ja-JP'): string {
-  const withoutKorean = value.replace(/[가-힣ㄱ-ㅎㅏ-ㅣ]+/g, ' ');
+  const targetOnly = value.replace(/\s*(?:읽기|뜻|정답|설명)\s*:[\s\S]*$/u, '').replace(/[①②③④]/g, ' ');
+  const withoutKorean = targetOnly.replace(/[가-힣ㄱ-ㅎㅏ-ㅣ]+/g, ' ');
   if (language === 'ja-JP') {
     return withoutKorean.replace(/\s+/g, ' ').trim();
   }
