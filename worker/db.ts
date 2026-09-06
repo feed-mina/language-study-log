@@ -1,7 +1,9 @@
 import type { AssetRow, ContentKind, ContentRow, StudyPayload, WorkerEnv } from './types';
 import { createEmptyCard } from 'ts-fsrs';
+import { ensureStudyCycleSchema } from './study-cycle';
 
 export async function ensureAutomationSchema(env: WorkerEnv): Promise<void> {
+  await ensureStudyCycleSchema(env.DB);
   await env.DB.batch([
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS study_plans (
       id TEXT PRIMARY KEY,
@@ -181,11 +183,17 @@ export async function insertContent(
 
   const category = kind === 'english' ? 'ENGLISH' : kind === 'japanese' ? 'JAPANESE' : 'TOEIC';
   const minutes = kind === 'toeic' ? 45 : 20;
-  await env.DB.prepare(`INSERT OR IGNORE INTO study_plans
-    (id, plan_date, category, title, detail, minutes, completed, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, 0, ?)`)
-    .bind(`content:${stored.id}`, date, category, payload.title, payload.summary.slice(0, 120), minutes, now)
-    .run();
+  const planId = `content:${stored.id}`;
+  await env.DB.batch([
+    env.DB.prepare(`INSERT OR IGNORE INTO study_plans
+      (id, plan_date, category, title, detail, minutes, completed, source_plan_id, status, root_plan_id, created_at, updated_at, archived_at, archive_reason)
+      VALUES (?, ?, ?, ?, ?, ?, 0, NULL, 'planned', ?, ?, ?, NULL, '')`)
+      .bind(planId, date, category, payload.title, payload.summary.slice(0, 120), minutes, planId, now, now),
+    env.DB.prepare(`INSERT OR IGNORE INTO study_plan_events
+      (id, plan_id, event_type, from_status, to_status, related_plan_id, target_date, idempotency_key, result_json, created_at)
+      VALUES (?, ?, 'created', NULL, 'planned', NULL, ?, NULL, '{}', ?)`)
+      .bind(`event:create:${planId}`, planId, date, now),
+  ]);
 
   const newCard = createEmptyCard(new Date(now));
   const cardStatements = payload.items.map((item, index) => env.DB.prepare(`INSERT OR IGNORE INTO study_cards

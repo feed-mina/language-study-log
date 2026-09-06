@@ -1,21 +1,11 @@
 import { env } from 'cloudflare:workers';
 
 import { isAuthorizedDashboardMutation } from './auth';
+import { ensureStudyCycleSchema, executePlanCommand, StudyCycleError, summarizeRecovery, type PlanCommand, type StudyPlanView } from '../../../worker/study-cycle';
 
 export const runtime = 'edge';
 
 type Row = Record<string, string | number | null>;
-type PlanRow = Row & {
-  id: string;
-  plan_date: string;
-  category: string;
-  title: string;
-  detail: string;
-  minutes: number;
-  completed: number;
-  source_plan_id: string | null;
-  created_at: string;
-};
 
 function db() {
   return (env as Cloudflare.Env & { DB: D1Database }).DB;
@@ -40,6 +30,7 @@ function unauthorized() {
 
 async function ensureSchema() {
   const database = db();
+  await ensureStudyCycleSchema(database);
   await database.batch([
     database.prepare(`CREATE TABLE IF NOT EXISTS study_plans (
       id TEXT PRIMARY KEY, plan_date TEXT NOT NULL, category TEXT NOT NULL, title TEXT NOT NULL,
@@ -93,10 +84,12 @@ function categoryForMaterial(kind: string): string {
   return 'TOEIC';
 }
 
-function mapPlan(row: Row) {
+function mapPlan(row: Row): StudyPlanView {
   return {
-    id: row.id, planDate: row.plan_date, category: row.category, title: row.title,
-    detail: row.detail, minutes: row.minutes, completed: row.completed, sourcePlanId: row.source_plan_id,
+    id: String(row.id ?? ''), planDate: String(row.plan_date ?? ''), category: String(row.category ?? ''), title: String(row.title ?? ''),
+    detail: String(row.detail ?? ''), minutes: Number(row.minutes ?? 0), completed: Number(row.completed ?? 0), sourcePlanId: row.source_plan_id ? String(row.source_plan_id) : null,
+    status: String(row.status ?? 'planned') as StudyPlanView['status'], rootPlanId: String(row.root_plan_id ?? row.id ?? ''), updatedAt: String(row.updated_at ?? row.created_at ?? ''),
+    archivedAt: row.archived_at ? String(row.archived_at) : null, archiveReason: String(row.archive_reason ?? ''),
   };
 }
 
@@ -113,21 +106,24 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const fallbackDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date());
   const date = validDate(url.searchParams.get('date')) ? url.searchParams.get('date')! : fallbackDate;
+  const recoveryDate = validDate(url.searchParams.get('recoveryDate')) ? url.searchParams.get('recoveryDate')! : date;
   const calendarStart = validDate(url.searchParams.get('calendarStart')) ? url.searchParams.get('calendarStart')! : date;
   const calendarEnd = validDate(url.searchParams.get('calendarEnd')) ? url.searchParams.get('calendarEnd')! : date;
   const logStart = validDate(url.searchParams.get('logStart')) ? url.searchParams.get('logStart')! : (validDate(url.searchParams.get('start')) ? url.searchParams.get('start')! : calendarStart);
   const logEnd = validDate(url.searchParams.get('logEnd')) ? url.searchParams.get('logEnd')! : (validDate(url.searchParams.get('end')) ? url.searchParams.get('end')! : calendarEnd);
   const database = db();
-  const [plansResult, overdueResult, logsResult, datesResult, legacyResult, goalResult, latestScore, reviewResult] = await Promise.all([
-    database.prepare('SELECT * FROM study_plans WHERE plan_date = ? ORDER BY created_at ASC').bind(date).all<Row>(),
-    database.prepare(`SELECT * FROM study_plans WHERE plan_date < ? AND completed = 0
-      ORDER BY plan_date DESC, created_at ASC LIMIT 7`).bind(date).all<Row>(),
+  const [plansResult, overdueResult, archivedResult, recoveryTodayResult, logsResult, datesResult, legacyResult, goalResult, latestScore, reviewResult] = await Promise.all([
+    database.prepare("SELECT * FROM study_plans WHERE plan_date = ? AND status <> 'archived' ORDER BY created_at ASC").bind(date).all<Row>(),
+    database.prepare(`SELECT * FROM study_plans WHERE plan_date < ? AND status = 'planned'
+      ORDER BY plan_date ASC, created_at ASC`).bind(recoveryDate).all<Row>(),
+    database.prepare("SELECT * FROM study_plans WHERE status = 'archived' ORDER BY archived_at DESC, created_at DESC LIMIT 50").all<Row>(),
+    database.prepare("SELECT COUNT(*) AS count FROM study_plans WHERE plan_date = ? AND status = 'planned'").bind(recoveryDate).first<{ count: number }>(),
     database.prepare(`SELECT * FROM study_logs WHERE study_date BETWEEN ? AND ? AND source_type <> 'legacy'
       ORDER BY study_date ASC, created_at ASC`).bind(logStart, logEnd).all<Row>(),
     database.prepare(`SELECT study_date AS date FROM study_logs
       WHERE study_date BETWEEN ? AND ? AND source_type <> 'legacy'
       UNION SELECT plan_date AS date FROM study_plans
-      WHERE completed = 1 AND plan_date BETWEEN ? AND ?`).bind(calendarStart, calendarEnd, calendarStart, calendarEnd).all<{ date: string }>(),
+      WHERE status = 'completed' AND plan_date BETWEEN ? AND ?`).bind(calendarStart, calendarEnd, calendarStart, calendarEnd).all<{ date: string }>(),
     database.prepare("SELECT COUNT(*) AS count FROM study_logs WHERE source_type = 'legacy'").first<{ count: number }>(),
     database.prepare("SELECT * FROM study_goals WHERE id = 'toeic' LIMIT 1").first<Row>(),
     database.prepare('SELECT * FROM toeic_scores ORDER BY score_date DESC, created_at DESC LIMIT 1').first<Row>(),
@@ -136,9 +132,13 @@ export async function GET(request: Request) {
       ORDER BY study_date DESC, created_at DESC LIMIT 5`).bind(date).all<Row>(),
   ]);
 
+  const plans = (plansResult.results ?? []).map(mapPlan);
+  const overduePlans = (overdueResult.results ?? []).map(mapPlan);
+  const archivedPlans = (archivedResult.results ?? []).map(mapPlan);
   return Response.json({
-    plans: (plansResult.results ?? []).map(mapPlan),
-    overduePlans: (overdueResult.results ?? []).map(mapPlan),
+    plans,
+    overduePlans,
+    recovery: summarizeRecovery(overduePlans, archivedPlans, recoveryDate, (recoveryTodayResult?.count ?? 0) > 0),
     logs: (logsResult.results ?? []).map(mapLog),
     completedDates: (datesResult.results ?? []).map((row) => row.date),
     legacyLogsCount: legacyResult?.count ?? 0,
@@ -163,10 +163,11 @@ export async function POST(request: Request) {
       .bind(crypto.randomUUID(), body.studyDate, text(body.part, 12) || 'OTHER', text(body.title, 80), minutes(body.minutes), text(body.score, 30), text(body.note, 300), text(body.confusedItems, 300), now).run();
   } else if (body.kind === 'plan') {
     if (!validDate(body.planDate) || !text(body.title, 80)) return Response.json({ error: 'invalid input' }, { status: 400 });
+    const planId = crypto.randomUUID();
     await database.prepare(`INSERT INTO study_plans
-      (id, plan_date, category, title, detail, minutes, completed, source_plan_id, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?)`)
-      .bind(crypto.randomUUID(), body.planDate, text(body.category, 12), text(body.title, 80), text(body.detail, 120), minutes(body.minutes), now).run();
+      (id, plan_date, category, title, detail, minutes, completed, source_plan_id, status, root_plan_id, created_at, updated_at, archived_at, archive_reason)
+      VALUES (?, ?, ?, ?, ?, ?, 0, NULL, 'planned', ?, ?, ?, NULL, '')`)
+      .bind(planId, body.planDate, text(body.category, 12), text(body.title, 80), text(body.detail, 120), minutes(body.minutes), planId, now, now).run();
   } else if (body.kind === 'goal') {
     const targetScore = scoreNumber(body.targetScore);
     if (targetScore === null || !validDate(body.examDate)) return Response.json({ error: 'invalid goal' }, { status: 400 });
@@ -189,7 +190,7 @@ export async function POST(request: Request) {
     const logId = `log:material:${material.id}`;
     await database.batch([
       database.prepare("UPDATE study_content SET status = 'completed', updated_at = ? WHERE id = ?").bind(now, material.id),
-      database.prepare('UPDATE study_plans SET completed = 1 WHERE id = ?').bind(`content:${material.id}`),
+      database.prepare("UPDATE study_plans SET completed = 1, status = 'completed', updated_at = ? WHERE id = ?").bind(now, `content:${material.id}`),
       database.prepare(`INSERT INTO study_logs
         (id, study_date, part, title, minutes, score, note, source_type, source_id, source_label, confused_items, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, 'material', ?, ?, ?, ?)
@@ -217,41 +218,27 @@ export async function PATCH(request: Request) {
     return Response.json({ ok: (result.meta.changes ?? 0) > 0 });
   }
 
-  const plan = await database.prepare('SELECT * FROM study_plans WHERE id = ? LIMIT 1').bind(id).first<PlanRow>();
-  if (!plan) return Response.json({ error: 'plan not found' }, { status: 404 });
-
-  if (body.action === 'reschedule') {
-    if (!validDate(body.planDate) || body.planDate === plan.plan_date || plan.completed !== 0) return Response.json({ error: 'invalid reschedule' }, { status: 409 });
-    const newId = crypto.randomUUID();
-    await database.batch([
-      database.prepare('UPDATE study_plans SET completed = 2 WHERE id = ? AND completed = 0').bind(plan.id),
-      database.prepare(`INSERT INTO study_plans
-        (id, plan_date, category, title, detail, minutes, completed, source_plan_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`)
-        .bind(newId, body.planDate, plan.category, plan.title, plan.detail, plan.minutes, plan.id, now),
-    ]);
-    return Response.json({ ok: true, newPlanId: newId, planDate: body.planDate });
+  try {
+    const action = body.action;
+    const command: PlanCommand = action === 'reschedule' || action === 'archive' || action === 'restore'
+      ? action
+      : Boolean(body.completed) ? 'complete' : 'undo-complete';
+    const result = await executePlanCommand(database, {
+      requestId: text(body.request_id, 128) || `dashboard:${crypto.randomUUID()}`,
+      command,
+      planId: id,
+      targetDate: command === 'reschedule' && typeof body.planDate === 'string' ? body.planDate : null,
+      archiveReason: command === 'archive' ? text(body.archiveReason, 200) : '',
+      minutes: typeof body.minutes === 'number' ? body.minutes : undefined,
+      score: text(body.score, 30),
+      note: text(body.note, 300),
+      confusedItems: text(body.confusedItems, 300),
+    }, now);
+    return Response.json({ ok: true, ...(result.createdPlan ? { newPlanId: result.createdPlan.id, planDate: result.createdPlan.planDate } : {}) });
+  } catch (error) {
+    if (error instanceof StudyCycleError) return Response.json({ error: error.message }, { status: error.status });
+    throw error;
   }
-
-  const completed = Boolean(body.completed);
-  const logId = `log:plan:${plan.id}`;
-  if (completed) {
-    await database.batch([
-      database.prepare('UPDATE study_plans SET completed = 1 WHERE id = ?').bind(plan.id),
-      database.prepare(`INSERT INTO study_logs
-        (id, study_date, part, title, minutes, score, note, source_type, source_id, source_label, confused_items, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'plan', ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET study_date = excluded.study_date, minutes = excluded.minutes,
-          score = excluded.score, note = excluded.note, confused_items = excluded.confused_items, created_at = excluded.created_at`)
-        .bind(logId, plan.plan_date, plan.category, plan.title, minutes(body.minutes ?? plan.minutes), text(body.score, 30), text(body.note, 300), plan.id, plan.title, text(body.confusedItems, 300), now),
-    ]);
-  } else {
-    await database.batch([
-      database.prepare('UPDATE study_plans SET completed = 0 WHERE id = ? AND completed = 1').bind(plan.id),
-      database.prepare("DELETE FROM study_logs WHERE id = ? AND source_type = 'plan'").bind(logId),
-    ]);
-  }
-  return Response.json({ ok: true });
 }
 
 export async function DELETE(request: Request) {

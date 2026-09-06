@@ -9,8 +9,32 @@ export const studyPlans = sqliteTable('study_plans', {
   minutes: integer('minutes').notNull(),
   completed: integer('completed').notNull().default(0),
   sourcePlanId: text('source_plan_id'),
+  status: text('status').notNull().default('planned'),
+  rootPlanId: text('root_plan_id'),
   createdAt: text('created_at').notNull(),
-}, (table) => [index('idx_study_plans_date').on(table.planDate)]);
+  updatedAt: text('updated_at').notNull().default(''),
+  archivedAt: text('archived_at'),
+  archiveReason: text('archive_reason').notNull().default(''),
+}, (table) => [
+  index('idx_study_plans_date').on(table.planDate),
+  index('idx_study_plans_status_date').on(table.status, table.planDate),
+]);
+
+export const studyPlanEvents = sqliteTable('study_plan_events', {
+  id: text('id').primaryKey(),
+  planId: text('plan_id').notNull(),
+  eventType: text('event_type').notNull(),
+  fromStatus: text('from_status'),
+  toStatus: text('to_status').notNull(),
+  relatedPlanId: text('related_plan_id'),
+  targetDate: text('target_date'),
+  idempotencyKey: text('idempotency_key'),
+  resultJson: text('result_json').notNull().default('{}'),
+  createdAt: text('created_at').notNull(),
+}, (table) => [
+  uniqueIndex('uq_study_plan_events_idempotency').on(table.idempotencyKey),
+  index('idx_study_plan_events_plan_created').on(table.planId, table.createdAt),
+]);
 
 export const studyLogs = sqliteTable('study_logs', {
   id: text('id').primaryKey(),

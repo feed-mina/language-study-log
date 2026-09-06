@@ -2,3 +2,5 @@
 ADMIN_TOKEN=replace-with-a-long-random-value
 TELEGRAM_BOT_TOKEN=replace-with-botfather-token
 TELEGRAM_CHAT_ID=replace-with-private-chat-id
+LANGUAGE_INTEGRATION_TOKEN=replace-with-a-separate-long-random-value
+PRIVATE_OWNER_EMAIL=replace-with-private-owner-email

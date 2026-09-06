@@ -29,6 +29,20 @@
       "when": 1787486233411,
       "tag": "0003_shiny_magus",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1788674187256,
+      "tag": "0004_learning_cycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1788674480806,
+      "tag": "0005_plan_lifecycle",
+      "breakpoints": true
     }
   ]
 }
