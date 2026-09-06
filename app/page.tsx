@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { dDay, getWeek, kstToday, shiftDate, splitLegacyQuestion, toLocalDate, weekLabel, type StudyOption } from './dashboard-utils';
 import { selectSpeechVoice } from './speech';
@@ -22,6 +22,9 @@ type AuthState = 'checking' | 'guest' | 'authenticated';
 type Editor = 'external-log' | 'plan' | 'goal' | null;
 type CompletionTarget = { type: 'plan' | 'material'; id: string; title: string; part: string; minutes: number; date: string };
 type RescheduleTarget = { plan: StudyPlan; date: string };
+type VoiceStatus = 'preparing' | 'ready' | 'unsupported';
+type SpeakingTarget = { materialId: string; key: string } | null;
+type SpeechSegment = { text?: string; key?: string; pause?: number };
 
 const days = ['일', '월', '화', '수', '목', '금', '토'];
 const weekDays = ['월', '화', '수', '목', '금', '토', '일'];
@@ -109,6 +112,22 @@ function toggleDetailsWithKeyboard(event: ReactKeyboardEvent<HTMLElement>) {
   if (details) details.open = !details.open;
 }
 
+/**
+ * 학습 화면에는 한국어 안내와 목표 언어 문장이 함께 있을 수 있다.
+ * 목표 언어 음성에는 한글 안내를 넣지 않아 발음이 섞이지 않게 한다.
+ */
+function targetSpeechText(value: string, language: 'en-US' | 'ja-JP'): string {
+  const withoutKorean = value.replace(/[가-힣ㄱ-ㅎㅏ-ㅣ]+/g, ' ');
+  if (language === 'ja-JP') {
+    return withoutKorean.replace(/\s+/g, ' ').trim();
+  }
+  // 영어 자료의 기호·숫자·문장부호는 남기되 한글 설명만 제거한다.
+  return withoutKorean.replace(/\s+/g, ' ').trim();
+}
+
+function exampleLabel(language: 'en-US' | 'ja-JP') { return language === 'ja-JP' ? '일본어 예문 5개 연속 듣기' : '영어 예문 5개 연속 듣기'; }
+function questionLabel(language: 'en-US' | 'ja-JP', index: number) { return language === 'ja-JP' ? `問題 ${index + 1}` : `Question ${index + 1}`; }
+
 export default function Home() {
   const today = useMemo(() => kstToday(), []);
   const currentWeekStart = useMemo(() => getWeek(today)[0], [today]);
@@ -130,7 +149,11 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
-  const [speakingMaterialId, setSpeakingMaterialId] = useState('');
+  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>('preparing');
+  const [speechVoices, setSpeechVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [speakingAction, setSpeakingAction] = useState<SpeakingTarget>(null);
+  const [speakingTarget, setSpeakingTarget] = useState<SpeakingTarget>(null);
+  const speechRun = useRef(0);
   const [authState, setAuthState] = useState<AuthState>('checking');
   const [accessEmail, setAccessEmail] = useState('');
   const week = useMemo(() => getWeek(selectedDate), [selectedDate]);
@@ -186,6 +209,28 @@ export default function Home() {
       .catch(() => { if (active) { setAuthState('guest'); setAccessEmail(''); } });
     return () => { active = false; };
   }, []);
+  // Chrome은 첫 getVoices()에서 빈 배열을 돌려줄 수 있다. 페이지가 열린 즉시
+  // 목록을 요청하고 voiceschanged까지 기다려서, 첫 듣기 클릭을 버리지 않는다.
+  useEffect(() => {
+    if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setVoiceStatus('unsupported');
+      return;
+    }
+    const synth = window.speechSynthesis;
+    const refreshVoices = () => {
+      const next = synth.getVoices();
+      setSpeechVoices(next);
+      setVoiceStatus(next.length ? 'ready' : 'preparing');
+    };
+    refreshVoices();
+    synth.addEventListener('voiceschanged', refreshVoices);
+    return () => {
+      synth.removeEventListener('voiceschanged', refreshVoices);
+      speechRun.current += 1;
+      synth.cancel();
+    };
+  }, []);
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(''), 4200); return () => clearTimeout(timer); }, [notice]);
   useEffect(() => {
     if (!focusedMaterialId || loading) return;
@@ -215,51 +260,114 @@ export default function Home() {
     setFocusedMaterialId(materialId);
   }
 
-  function speakMaterial(material: StudyMaterial, payload: StudyPayload) {
+  function speechLanguage(material: StudyMaterial): 'en-US' | 'ja-JP' {
+    return materialKind[material.kind].language === 'ja' ? 'ja-JP' : 'en-US';
+  }
+
+  function selectedVoice(language: 'en-US' | 'ja-JP' | 'ko-KR') {
+    return selectSpeechVoice(speechVoices, language);
+  }
+
+  function listeningState(language: 'en-US' | 'ja-JP') {
+    if (voiceStatus === 'unsupported') return { disabled: true, label: '이 브라우저는 듣기를 지원하지 않아요' };
+    if (voiceStatus === 'preparing') return { disabled: true, label: language === 'ja-JP' ? '일본어 음성 준비 중…' : '영어 음성 준비 중…' };
+    if (!selectedVoice(language)) return { disabled: true, label: language === 'ja-JP' ? '일본어 음성 없음' : '영어 음성 없음' };
+    return { disabled: false, label: '' };
+  }
+
+  function isSpeaking(materialId: string, key: string) {
+    return speakingTarget?.materialId === materialId && speakingTarget.key === key;
+  }
+
+  function stopSpeaking() {
+    speechRun.current += 1;
+    window.speechSynthesis?.cancel();
+    setSpeakingAction(null);
+    setSpeakingTarget(null);
+  }
+
+  function playSegments(material: StudyMaterial, key: string, language: 'en-US' | 'ja-JP' | 'ko-KR', segments: SpeechSegment[]) {
     if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
-      setNotice("이 브라우저는 문장 듣기를 지원하지 않아요. Chrome 또는 Safari에서 다시 시도해 주세요.");
+      setNotice('이 브라우저는 문장 듣기를 지원하지 않아요. Chrome 또는 Safari에서 다시 시도해 주세요.');
       return;
     }
-    if (speakingMaterialId === material.id) {
-      window.speechSynthesis.cancel();
-      setSpeakingMaterialId("");
+    if (speakingAction?.materialId === material.id && speakingAction.key === key) {
+      stopSpeaking();
       return;
     }
+    const voice = selectedVoice(language);
+    if (!voice) {
+      setNotice(language === 'ja-JP' ? '일본어 음성을 준비 중이에요. 잠시만 기다려 주세요.' : language === 'en-US' ? '영어 음성을 준비 중이에요. 잠시만 기다려 주세요.' : '한국어 음성을 찾지 못했어요. OS 음성 설정을 확인해 주세요.');
+      return;
+    }
+    const queue = segments.filter((segment) => segment.pause || segment.text?.trim());
+    if (!queue.length) { setNotice('읽어 줄 문장이 없어요.'); return; }
+    const run = speechRun.current + 1;
+    speechRun.current = run;
     window.speechSynthesis.cancel();
-    const language = materialKind[material.kind].language === "ja" ? "ja-JP" : "en-US";
-    const availableVoices = window.speechSynthesis.getVoices();
-    const preferredVoice = selectSpeechVoice(availableVoices, language);
-    if (availableVoices.length === 0) {
-      setNotice("브라우저 음성 목록을 준비하고 있어요. 잠시 후 다시 눌러 주세요.");
-      return;
-    }
-    if (!preferredVoice) {
-      setNotice(language === "ja-JP" ? "일본어 음성을 찾지 못했어요. OS 음성 설정에서 일본어 음성을 추가해 주세요." : "영어 음성을 찾지 못했어요. OS 음성 설정에서 영어 음성을 추가해 주세요.");
-      return;
-    }
-    const sentences = payload.items.slice(0, 5).map((item) => item.prompt.trim()).filter(Boolean);
-    if (sentences.length === 0) {
-      setNotice("읽어 줄 문장이 없어요.");
-      return;
-    }
-    setSpeakingMaterialId(material.id);
-    sentences.forEach((sentence, index) => {
-      const utterance = new SpeechSynthesisUtterance(sentence);
-      utterance.lang = language;
-      if (preferredVoice) utterance.voice = preferredVoice;
-      utterance.rate = language === "ja-JP" ? 0.82 : 0.86;
-      utterance.pitch = 1;
-      if (index === sentences.length - 1) {
-        utterance.onend = () => setSpeakingMaterialId("");
-        utterance.onerror = (event) => {
-          setSpeakingMaterialId("");
-          if (event.error !== "canceled" && event.error !== "interrupted") {
-            setNotice("문장을 재생하지 못했어요. 브라우저 음성 설정을 확인해 주세요.");
-          }
-        };
+    setSpeakingAction({ materialId: material.id, key });
+    const next = (index: number) => {
+      if (speechRun.current !== run) return;
+      if (index >= queue.length) { setSpeakingAction(null); setSpeakingTarget(null); return; }
+      const segment = queue[index];
+      if (segment.pause) {
+        window.setTimeout(() => next(index + 1), segment.pause);
+        return;
       }
+      const utterance = new SpeechSynthesisUtterance(segment.text ?? '');
+      utterance.lang = language;
+      utterance.voice = voice;
+      utterance.rate = language === 'ja-JP' ? 0.82 : language === 'en-US' ? 0.86 : 0.9;
+      utterance.pitch = 1;
+      if (segment.key) setSpeakingTarget({ materialId: material.id, key: segment.key });
+      utterance.onend = () => next(index + 1);
+      utterance.onerror = (event) => {
+        if (speechRun.current !== run) return;
+        setSpeakingAction(null);
+        setSpeakingTarget(null);
+        if (event.error !== 'canceled' && event.error !== 'interrupted') setNotice('문장을 재생하지 못했어요. 브라우저 음성 설정을 확인해 주세요.');
+      };
       window.speechSynthesis.speak(utterance);
+    };
+    next(0);
+  }
+
+  function speakExamples(material: StudyMaterial, payload: StudyPayload) {
+    const language = speechLanguage(material);
+    playSegments(material, 'examples', language, payload.items.slice(0, 5).flatMap((item, index) => [
+      { text: targetSpeechText(item.prompt, language), key: `item-${index}-prompt` },
+      ...(index < Math.min(5, payload.items.length) - 1 ? [{ pause: 360 }] : []),
+    ]));
+  }
+
+  function speakSentence(material: StudyMaterial, item: StudyItem, index: number) {
+    const language = speechLanguage(material);
+    playSegments(material, `item-${index}-sentence`, language, [{ text: targetSpeechText(item.prompt, language), key: `item-${index}-prompt` }]);
+  }
+
+  function speakQuestion(material: StudyMaterial, item: StudyItem, index: number) {
+    const language = speechLanguage(material);
+    const options = item.options ?? [];
+    const segments: SpeechSegment[] = [
+      { text: questionLabel(language, index), key: `item-${index}-number` },
+      { text: targetSpeechText(item.prompt, language), key: `item-${index}-prompt` },
+    ];
+    options.forEach((option) => {
+      segments.push({ pause: 320 }, { text: option.label, key: `item-${index}-option-${option.label}` }, { text: targetSpeechText(option.text, language), key: `item-${index}-option-${option.label}` });
     });
+    playSegments(material, `item-${index}-question`, language, segments);
+  }
+
+  function speakOption(material: StudyMaterial, option: StudyOption, index: number) {
+    const language = speechLanguage(material);
+    playSegments(material, `item-${index}-option-${option.label}`, language, [
+      { text: option.label, key: `item-${index}-option-${option.label}` },
+      { text: targetSpeechText(option.text, language), key: `item-${index}-option-${option.label}` },
+    ]);
+  }
+
+  function speakExplanation(material: StudyMaterial, item: StudyItem, index: number) {
+    playSegments(material, `item-${index}-explanation`, 'ko-KR', [{ text: `정답. ${item.answer}. 해설. ${item.explanation}`, key: `item-${index}-explanation` }]);
   }
   const recommendedPlanIds = new Set(recovery.recommended.map((plan) => plan.id));
   const recoveryWeekend = [0, 6].includes(toLocalDate(today).getDay());
@@ -465,18 +573,44 @@ export default function Home() {
           <summary className="section-heading materials-heading"><div><p className="mini-label">DAILY MATERIALS</p><h2>예약 학습 자료</h2></div><p>{sortedMaterials.length}개 도착 <Marker /></p></summary>
           <div className="accordion-body">
             {loading ? <div className="empty-state material-empty">예약 자료를 불러오는 중...</div> : sortedMaterials.length ? <div className="materials-grid">
-              {sortedMaterials.map((material) => { const meta = materialKind[material.kind]; const payload = readPayload(material.body); const audioAssets = material.assets.filter((asset) => asset.contentType.startsWith('audio/')); const canListen = Boolean(payload) && (material.kind === 'english' || material.kind === 'japanese'); return (
-                <details className={`material-card ${material.kind} ${focusedMaterialId === material.id ? 'is-focused' : ''}`} id={`material-${material.id}`} open={focusedMaterialId === material.id || undefined} key={material.id}>
-                  <summary className="material-card-summary"><div><span className="material-kind">{meta.label}</span><small>{material.status === 'completed' ? '완료' : material.status === 'in_progress' ? '학습 중' : meta.description}</small></div><strong>{material.title}</strong><span>{payload?.items.length ?? 0}개 <Marker /></span></summary>
-                  <div className="material-card-body"><p className="material-summary">{material.summary}</p>
-                    <div className="material-actions">{canListen && payload && <button className="listen-button" onClick={() => speakMaterial(material, payload)} aria-pressed={speakingMaterialId === material.id}><span aria-hidden="true">{speakingMaterialId === material.id ? '■' : '▶'}</span>{speakingMaterialId === material.id ? ' 듣기 멈추기' : ` ${Math.min(5, payload.items.length)}문장 연속 듣기`}</button>}{material.status === 'ready' && <button onClick={() => void startMaterial(material)}>학습 시작</button>}<button onClick={() => openCompletion({ type: 'material', id: material.id, title: material.title, part: meta.part, minutes: meta.minutes, date: selectedDate })}>{material.status === 'completed' ? '완료 기록 수정' : '학습 완료 기록'}</button></div>
-                    {canListen && <p className="listen-help">영어·일본어 음성을 선택해 한 문장씩 천천히 읽어 드려요.</p>}
-                    {payload?.speakingSentence && <div className="speaking-block"><span>말하기 한 문장</span><strong lang={meta.language}>{payload.speakingSentence}</strong>{payload.speakingMeaning && <p>{payload.speakingMeaning}</p>}</div>}
-                    {audioAssets.map((asset) => <figure className="material-audio" key={asset.id}><figcaption>듣기 자료 · {asset.filename}</figcaption><audio controls preload="none" src={asset.url}>오디오를 재생할 수 없는 브라우저입니다.</audio></figure>)}
-                    {payload?.items.length ? <div className="material-items">{payload.items.map((item, index) => <details className="material-item" key={`${material.id}-${index}`}><summary><span>{String(index + 1).padStart(2, '0')}</span><div><strong lang={meta.language}>{item.prompt}</strong>{item.options && <ol className="material-options">{item.options.map((option) => <li key={option.label}><b>{option.label}</b><span>{option.text}</span></li>)}</ol>}</div></summary><div className="material-answer"><div><span>정답</span><p>{item.answer}</p></div>{item.explanation && <div><span>설명</span><p>{item.explanation}</p></div>}</div></details>)}</div> : <p className="material-unavailable">상세 학습 내용은 준비 중이에요.</p>}
-                  </div>
-                </details>
-              ); })}
+              {sortedMaterials.map((material) => {
+                const meta = materialKind[material.kind];
+                const payload = readPayload(material.body);
+                const audioAssets = material.assets.filter((asset) => asset.contentType.startsWith('audio/'));
+                const canListen = Boolean(payload) && (material.kind === 'english' || material.kind === 'japanese');
+                const language = canListen ? speechLanguage(material) : 'en-US';
+                const listen = listeningState(language);
+                const explanationReady = voiceStatus === 'ready' && Boolean(selectedVoice('ko-KR'));
+                const examplesPlaying = speakingAction?.materialId === material.id && speakingAction.key === 'examples';
+                return (
+                  <details className={`material-card ${material.kind} ${focusedMaterialId === material.id ? 'is-focused' : ''}`} id={`material-${material.id}`} open={focusedMaterialId === material.id || undefined} key={material.id}>
+                    <summary className="material-card-summary"><div><span className="material-kind">{meta.label}</span><small>{material.status === 'completed' ? '완료' : material.status === 'in_progress' ? '학습 중' : meta.description}</small></div><strong>{material.title}</strong><span>{payload?.items.length ?? 0}개 <Marker /></span></summary>
+                    <div className="material-card-body"><p className="material-summary">{material.summary}</p>
+                      <div className="material-actions">
+                        {canListen && payload && <button className="listen-button" disabled={listen.disabled} title={listen.label || undefined} onClick={() => speakExamples(material, payload)} aria-pressed={examplesPlaying}><span aria-hidden="true">{examplesPlaying ? '■' : '▶'}</span>{examplesPlaying ? ' 듣기 멈추기' : ` ${listen.label || exampleLabel(language)}`}</button>}
+                        {material.status === 'ready' && <button onClick={() => void startMaterial(material)}>학습 시작</button>}
+                        <button onClick={() => openCompletion({ type: 'material', id: material.id, title: material.title, part: meta.part, minutes: meta.minutes, date: selectedDate })}>{material.status === 'completed' ? '완료 기록 수정' : '학습 완료 기록'}</button>
+                      </div>
+                      {canListen && <p className="listen-help">{listen.label || '예문은 목표 언어로만 읽고, 문제·선택지·해설 듣기를 따로 선택할 수 있어요.'}</p>}
+                      {payload?.speakingSentence && <div className="speaking-block"><span>말하기 한 문장</span><strong lang={meta.language}>{payload.speakingSentence}</strong>{payload.speakingMeaning && <p>{payload.speakingMeaning}</p>}</div>}
+                      {audioAssets.map((asset) => <figure className="material-audio" key={asset.id}><figcaption>듣기 자료 · {asset.filename}</figcaption><audio controls preload="none" src={asset.url}>오디오를 재생할 수 없는 브라우저입니다.</audio></figure>)}
+                      {payload?.items.length ? <div className="material-items">{payload.items.map((item, index) => {
+                        const sentencePlaying = speakingAction?.materialId === material.id && speakingAction.key === `item-${index}-sentence`;
+                        const questionPlaying = speakingAction?.materialId === material.id && speakingAction.key === `item-${index}-question`;
+                        const explanationPlaying = speakingAction?.materialId === material.id && speakingAction.key === `item-${index}-explanation`;
+                        return <details className={`material-item ${isSpeaking(material.id, `item-${index}-prompt`) ? 'is-speaking' : ''}`} key={`${material.id}-${index}`}><summary><span>{String(index + 1).padStart(2, '0')}</span><div><strong lang={meta.language}>{item.prompt}</strong></div></summary>
+                          {canListen && <div className="material-item-actions">
+                            {item.options?.length ? <button disabled={listen.disabled} onClick={() => speakQuestion(material, item, index)} aria-pressed={questionPlaying}>{questionPlaying ? '듣기 멈추기' : '문제 전체 듣기'}</button> : null}
+                            <button disabled={listen.disabled} onClick={() => speakSentence(material, item, index)} aria-pressed={sentencePlaying}>{sentencePlaying ? '듣기 멈추기' : item.options?.length ? '문장만 듣기' : '문장 듣기'}</button>
+                          </div>}
+                          {item.options && <ol className="material-options">{item.options.map((option) => <li className={isSpeaking(material.id, `item-${index}-option-${option.label}`) ? 'is-speaking' : ''} key={option.label}><b>{option.label}</b><span>{option.text}</span>{canListen && <button disabled={listen.disabled} onClick={() => speakOption(material, option, index)} aria-pressed={speakingAction?.materialId === material.id && speakingAction.key === `item-${index}-option-${option.label}`}>{speakingAction?.materialId === material.id && speakingAction.key === `item-${index}-option-${option.label}` ? '멈추기' : `${option.label} 듣기`}</button>}</li>)}</ol>}
+                          <div className={`material-answer ${isSpeaking(material.id, `item-${index}-explanation`) ? 'is-speaking' : ''}`}><div><span>정답</span><p>{item.answer}</p></div>{item.explanation && <div><span>설명</span><p>{item.explanation}</p></div>}{canListen && <button className="explanation-listen" disabled={!explanationReady} title={explanationReady ? undefined : voiceStatus === 'preparing' ? '한국어 음성 준비 중…' : '한국어 음성 없음'} onClick={() => speakExplanation(material, item, index)} aria-pressed={explanationPlaying}>{explanationPlaying ? '해설 듣기 멈추기' : explanationReady ? '해설 듣기' : voiceStatus === 'preparing' ? '해설 음성 준비 중…' : '해설 음성 없음'}</button>}</div>
+                        </details>;
+                      })}</div> : <p className="material-unavailable">상세 학습 내용은 준비 중이에요.</p>}
+                    </div>
+                  </details>
+                );
+              })}
             </div> : <div className="empty-state material-empty"><strong>이 날짜에 도착한 예약 학습 자료가 없어요.</strong><span>영어, 일본어, TOEIC 자료가 도착하면 여기에 모아 보여드려요.</span></div>}
           </div>
         </details>
