@@ -126,6 +126,16 @@ function targetSpeechText(value: string, language: 'en-US' | 'ja-JP'): string {
   return withoutKorean.replace(/\s+/g, ' ').trim();
 }
 
+function hasTargetLanguageText(value: string, language: 'en-US' | 'ja-JP'): boolean {
+  return language === 'ja-JP' ? /[\u3040-\u30ff\u3400-\u9fff]/u.test(value) : /[A-Za-z]/.test(value);
+}
+
+function exampleSpeechText(item: StudyItem, language: 'en-US' | 'ja-JP'): string {
+  const prompt = targetSpeechText(item.prompt, language);
+  if (hasTargetLanguageText(prompt, language)) return prompt;
+  return item.options?.map((option) => targetSpeechText(option.text, language)).find((option) => hasTargetLanguageText(option, language)) ?? prompt;
+}
+
 function exampleLabel(language: 'en-US' | 'ja-JP') { return language === 'ja-JP' ? '일본어 예문 5개 연속 듣기' : '영어 예문 5개 연속 듣기'; }
 function questionLabel(language: 'en-US' | 'ja-JP', index: number) { return language === 'ja-JP' ? `問題 ${index + 1}` : `Question ${index + 1}`; }
 
@@ -336,14 +346,14 @@ export default function Home() {
   function speakExamples(material: StudyMaterial, payload: StudyPayload) {
     const language = speechLanguage(material);
     playSegments(material, 'examples', language, payload.items.slice(0, 5).flatMap((item, index) => [
-      { text: targetSpeechText(item.prompt, language), key: `item-${index}-prompt` },
+      { text: exampleSpeechText(item, language), key: `item-${index}-prompt` },
       ...(index < Math.min(5, payload.items.length) - 1 ? [{ pause: 360 }] : []),
     ]));
   }
 
   function speakSentence(material: StudyMaterial, item: StudyItem, index: number) {
     const language = speechLanguage(material);
-    playSegments(material, `item-${index}-sentence`, language, [{ text: targetSpeechText(item.prompt, language), key: `item-${index}-prompt` }]);
+    playSegments(material, `item-${index}-sentence`, language, [{ text: exampleSpeechText(item, language), key: `item-${index}-prompt` }]);
   }
 
   function speakQuestion(material: StudyMaterial, item: StudyItem, index: number) {
