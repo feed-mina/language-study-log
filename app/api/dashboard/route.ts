@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers';
 
 import { isAuthorizedDashboardMutation } from './auth';
+import { ensureQuizMistakesSchema, isQuizLabel, isQuizRequestId, listQuizMistakes, QuizMistakeError, recordQuizAnswer, recordSavedQuizAnswer } from '../../../worker/quiz-mistakes';
 import { ensureStudyCycleSchema, executePlanCommand, StudyCycleError, summarizeRecovery, type PlanCommand, type StudyPlanView } from '../../../worker/study-cycle';
 
 export const runtime = 'edge';
@@ -31,6 +32,7 @@ function unauthorized() {
 async function ensureSchema() {
   const database = db();
   await ensureStudyCycleSchema(database);
+  await ensureQuizMistakesSchema(database);
   await database.batch([
     database.prepare(`CREATE TABLE IF NOT EXISTS study_plans (
       id TEXT PRIMARY KEY, plan_date TEXT NOT NULL, category TEXT NOT NULL, title TEXT NOT NULL,
@@ -112,7 +114,7 @@ export async function GET(request: Request) {
   const logStart = validDate(url.searchParams.get('logStart')) ? url.searchParams.get('logStart')! : (validDate(url.searchParams.get('start')) ? url.searchParams.get('start')! : calendarStart);
   const logEnd = validDate(url.searchParams.get('logEnd')) ? url.searchParams.get('logEnd')! : (validDate(url.searchParams.get('end')) ? url.searchParams.get('end')! : calendarEnd);
   const database = db();
-  const [plansResult, overdueResult, archivedResult, recoveryTodayResult, logsResult, datesResult, legacyResult, goalResult, latestScore, reviewResult] = await Promise.all([
+  const [plansResult, overdueResult, archivedResult, recoveryTodayResult, logsResult, datesResult, legacyResult, goalResult, latestScore, reviewResult, quizMistakes] = await Promise.all([
     database.prepare("SELECT * FROM study_plans WHERE plan_date = ? AND status <> 'archived' ORDER BY created_at ASC").bind(date).all<Row>(),
     database.prepare(`SELECT * FROM study_plans WHERE plan_date < ? AND status = 'planned'
       ORDER BY plan_date ASC, created_at ASC`).bind(recoveryDate).all<Row>(),
@@ -130,6 +132,7 @@ export async function GET(request: Request) {
     database.prepare(`SELECT title, study_date, note, confused_items FROM study_logs
       WHERE study_date <= ? AND source_type <> 'legacy' AND (note <> '' OR confused_items <> '')
       ORDER BY study_date DESC, created_at DESC LIMIT 5`).bind(date).all<Row>(),
+    listQuizMistakes(database),
   ]);
 
   const plans = (plansResult.results ?? []).map(mapPlan);
@@ -145,6 +148,7 @@ export async function GET(request: Request) {
     goal: goalResult ? { targetScore: goalResult.target_score, examDate: goalResult.exam_date, updatedAt: goalResult.updated_at } : null,
     latestScore: latestScore ? { score: latestScore.score, scoreDate: latestScore.score_date, scoreType: latestScore.score_type, source: latestScore.source } : null,
     reviewNotes: (reviewResult.results ?? []).map((row) => ({ title: row.title, studyDate: row.study_date, note: row.note, confusedItems: row.confused_items })),
+    quizMistakes,
   });
 }
 
@@ -198,6 +202,27 @@ export async function POST(request: Request) {
           score = excluded.score, note = excluded.note, confused_items = excluded.confused_items, created_at = excluded.created_at`)
         .bind(logId, body.studyDate, categoryForMaterial(material.kind), material.title, minutes(body.minutes), text(body.score, 30), text(body.note, 300), material.id, material.title, text(body.confusedItems, 300), now),
     ]);
+  } else if (body.kind === 'quiz-attempt') {
+    const materialId = text(body.materialId, 100);
+    const itemIndex = Number(body.itemIndex);
+    const attemptedAt = typeof body.attemptedAt === 'string' ? body.attemptedAt : '';
+    if (!materialId || !Number.isInteger(itemIndex) || itemIndex < 0 || itemIndex > 20 || !isQuizLabel(body.selectedLabel)
+      || !isQuizRequestId(body.requestId) || !attemptedAt || attemptedAt.length > 40) {
+      return Response.json({ error: 'invalid quiz attempt' }, { status: 400 });
+    }
+    try {
+      const identity = { requestId: body.requestId, attemptedAt, selectedLabel: body.selectedLabel };
+      const result = typeof body.itemHash === 'string' && /^[0-9a-f]{64}$/i.test(body.itemHash)
+        ? await recordSavedQuizAnswer(database, { ...identity, materialId, itemIndex, itemHash: body.itemHash }, now)
+        : typeof body.itemVersion === 'string' && body.itemVersion.length <= 12_000
+          ? await recordQuizAnswer(database, { ...identity, materialId, itemIndex, itemVersion: body.itemVersion }, now)
+          : null;
+      if (!result) return Response.json({ error: 'invalid quiz item version' }, { status: 400 });
+      return Response.json({ ok: true, ...result }, { status: result.correct ? 200 : 201 });
+    } catch (error) {
+      if (error instanceof QuizMistakeError) return Response.json({ error: error.message }, { status: error.status });
+      throw error;
+    }
   } else {
     return Response.json({ error: 'invalid kind' }, { status: 400 });
   }

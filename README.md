@@ -10,7 +10,8 @@ ChatGPT 예약 작업이 만든 영어·일본어·TOEIC 학습 자료를 GitHub
 - GitHub Actions가 학습 파일을 검증하고 기존 D1에 멱등 업서트
 - D1에 일정, 생성 콘텐츠, 파일 메타데이터, 발송 이력 저장
 - R2에 MP3, PDF, 이미지 저장
-- 날짜를 선택하면 영어·일본어·TOEIC 전체 자료와 정답을 사이트에 표시
+- 날짜를 선택하면 영어·일본어·TOEIC 전체 자료를 표시하고, TOEIC은 A·B·C·D 버튼 선택 뒤 정답과 해설 공개
+- 틀린 TOEIC 문항만 중복 없이 오답노트에 저장하고, 다시 맞힌 문항은 해결 처리
 - 지나간 미완료 일정을 최대 7개까지 모아 보여주고, 한 번에 선택한 날짜로 다시 예약
 - 수동 API로 Workers AI 생성 및 Telegram 발송 가능
 - FSRS로 카드별 다음 복습일 계산
@@ -36,8 +37,8 @@ GitHub Actions는 `wrangler.jsonc`에 연결된 Cloudflare D1을 갱신합니다
 | `GET` | `/api/materials?date=YYYY-MM-DD&kind=english` | 날짜별 생성 자료 조회 | 없음 |
 | `GET`, `HEAD` | `/api/assets/:id` | R2 파일 조회 | 없음 |
 | `GET` | `/api/reviews/due?language=english&limit=20` | 오늘 복습할 카드 조회 | 없음 |
-| `GET` | `/api/dashboard` | 일정과 개인 학습 기록 조회 | 없음 |
-| `POST`, `PATCH`, `DELETE` | `/api/dashboard` | 일정과 개인 학습 기록 추가·변경·삭제 | Cloudflare Access JWT + same-origin 또는 Bearer 토큰 |
+| `GET` | `/api/dashboard` | 일정, 개인 학습 기록, 미해결 TOEIC 오답 조회 | 없음 |
+| `POST`, `PATCH`, `DELETE` | `/api/dashboard` | 일정·기록 변경 및 TOEIC 정답 판정·오답 해결 | Cloudflare Access JWT + same-origin 또는 Bearer 토큰 |
 | `GET` | `/api/dashboard/session` | Google Access 로그인 신원 확인 | Cloudflare Access JWT |
 | `POST` | `/api/admin/generate` | 자료 생성 및 선택적 Telegram 발송 | Bearer 토큰 |
 | `POST` | `/api/admin/send/:contentId` | 기존 자료 Telegram 재발송 | Bearer 토큰 |

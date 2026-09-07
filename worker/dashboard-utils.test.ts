@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { dDay, getWeek, kstToday, shiftDate, splitLegacyQuestion, weekLabel } from '../app/dashboard-utils.ts';
+import { correctOptionLabel, dDay, getWeek, kstToday, quizItemFromMaterialBody, shiftDate, splitLegacyQuestion, weekLabel } from '../app/dashboard-utils.ts';
 
 test('week helpers use Monday through Sunday at month boundaries', () => {
   const week = getWeek('2026-08-30');
@@ -38,4 +38,41 @@ test('legacy Japanese circled choices are split and labelled for listening', () 
     { label: 'A', text: '図書館はどこにありますか。' },
     { label: 'B', text: '図書館はどこにいますか。' },
   ]);
+});
+
+test('TOEIC answer labels support both legacy and current generated formats', () => {
+  assert.equal(correctOptionLabel('B. promptly — was distributed promptly'), 'B');
+  assert.equal(correctOptionLabel('정답: C. will have completed. 완성 표현: will have completed'), 'C');
+  assert.equal(correctOptionLabel('Answer: d) approval'), 'D');
+  assert.equal(correctOptionLabel('정답: ① あります'), null);
+});
+
+test('quiz items are read from the saved material instead of client-provided answers', () => {
+  const body = JSON.stringify({
+    items: [{
+      prompt: 'The memo was distributed _____ to all employees.',
+      options: [
+        { label: 'A', text: 'prompt' },
+        { label: 'B', text: 'promptly' },
+        { label: 'C', text: 'promptness' },
+        { label: 'D', text: 'prompted' },
+      ],
+      answer: '정답: B. promptly. 완성 표현: was distributed promptly',
+      explanation: '동사 distributed를 꾸미는 부사가 필요합니다.',
+    }],
+  });
+
+  assert.deepEqual(quizItemFromMaterialBody(body, 0), {
+    prompt: 'The memo was distributed _____ to all employees.',
+    options: [
+      { label: 'A', text: 'prompt' },
+      { label: 'B', text: 'promptly' },
+      { label: 'C', text: 'promptness' },
+      { label: 'D', text: 'prompted' },
+    ],
+    correctLabel: 'B',
+    explanation: '동사 distributed를 꾸미는 부사가 필요합니다.',
+  });
+  assert.equal(quizItemFromMaterialBody(body, 4), null);
+  assert.equal(quizItemFromMaterialBody('{not-json', 0), null);
 });

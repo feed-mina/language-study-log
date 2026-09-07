@@ -1,4 +1,69 @@
 export type StudyOption = { label: 'A' | 'B' | 'C' | 'D'; text: string };
+export type QuizItemSnapshot = { prompt: string; options: StudyOption[]; correctLabel: StudyOption['label']; explanation: string };
+const quizLabels = ['A', 'B', 'C', 'D'] as const;
+
+export function correctOptionLabel(answer: string): StudyOption['label'] | null {
+  const match = answer.match(/^\s*(?:(?:정답|answer)\s*:\s*)?([A-D])(?=\s|[.)]|$)/i);
+  return match ? match[1].toUpperCase() as StudyOption['label'] : null;
+}
+
+export function quizItemSnapshot(prompt: string, options: unknown, answer: string, explanation = ''): QuizItemSnapshot | null {
+  const legacy = splitLegacyQuestion(prompt);
+  const structured = Array.isArray(options) && options.length === quizLabels.length
+    ? options.map((option, index) => {
+      if (!option || typeof option !== 'object' || Array.isArray(option)) return null;
+      const candidate = option as Record<string, unknown>;
+      return candidate.label === quizLabels[index] && typeof candidate.text === 'string' && candidate.text.trim()
+        ? { label: quizLabels[index], text: candidate.text.trim() }
+        : null;
+    })
+    : [];
+  const normalizedOptions = structured.length === quizLabels.length && structured.every((option): option is StudyOption => option !== null)
+    ? structured
+    : legacy.options;
+  const correctLabel = correctOptionLabel(answer);
+  if (!normalizedOptions || normalizedOptions.length !== quizLabels.length || !correctLabel) return null;
+  return {
+    prompt: legacy.options ? legacy.prompt : prompt.trim(),
+    options: normalizedOptions,
+    correctLabel,
+    explanation: explanation.trim(),
+  };
+}
+
+export function quizItemVersion(item: QuizItemSnapshot): string {
+  return JSON.stringify(item);
+}
+
+export function quizItemSnapshotFromJson(value: string): QuizItemSnapshot | null {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    const row = parsed as Record<string, unknown>;
+    if (typeof row.prompt !== 'string' || typeof row.correctLabel !== 'string' || typeof row.explanation !== 'string') return null;
+    return quizItemSnapshot(row.prompt, row.options, row.correctLabel, row.explanation);
+  } catch {
+    return null;
+  }
+}
+
+export function quizItemFromMaterialBody(bodyJson: string, itemIndex: number): QuizItemSnapshot | null {
+  if (!Number.isInteger(itemIndex) || itemIndex < 0 || itemIndex > 20) return null;
+  try {
+    const payload = JSON.parse(bodyJson) as unknown;
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+    const items = (payload as Record<string, unknown>).items;
+    if (!Array.isArray(items) || itemIndex >= items.length) return null;
+    const item = items[itemIndex];
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+    const row = item as Record<string, unknown>;
+    if (typeof row.prompt !== 'string' || typeof row.answer !== 'string') return null;
+
+    return quizItemSnapshot(row.prompt, row.options, row.answer, typeof row.explanation === 'string' ? row.explanation : '');
+  } catch {
+    return null;
+  }
+}
 
 export function localDateString(date = new Date()): string {
   const year = date.getFullYear();

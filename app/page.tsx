@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { dDay, getWeek, kstToday, shiftDate, splitLegacyQuestion, toLocalDate, weekLabel, type StudyOption } from './dashboard-utils';
+import { correctOptionLabel, dDay, getWeek, kstToday, quizItemSnapshot, quizItemVersion, shiftDate, splitLegacyQuestion, toLocalDate, weekLabel, type StudyOption } from './dashboard-utils';
 import { selectSpeechVoice } from './speech';
 
 type StudyPlanStatus = 'planned' | 'completed' | 'rescheduled' | 'archived';
@@ -16,8 +16,11 @@ type StudyMaterial = { id: string; date: string; kind: 'english' | 'japanese' | 
 type Goal = { targetScore: number; examDate: string; updatedAt: string };
 type ToeicScore = { score: number; scoreDate: string; scoreType: string; source: string };
 type ReviewNote = { title: string; studyDate: string; note: string; confusedItems: string };
+type QuizMistake = { id: string; latestRequestId: string; materialId: string; materialDate: string; materialTitle: string; itemIndex: number; itemHash: string; prompt: string; options: StudyOption[]; selectedLabel: StudyOption['label']; correctLabel: StudyOption['label']; explanation: string; attempts: number; firstWrongAt: string; lastWrongAt: string };
+type QuizAnswerState = { selectedLabel: StudyOption['label']; saving: boolean; saved: boolean; failed: boolean; correct: boolean | null; requestId: string; attemptedAt: string };
+type QuizSaveResult = { correct: boolean; resolved: boolean; itemHash: string } | 'stale' | null;
 type RecoverySummary = { totalCount: number; totalMinutes: number; oldestPlanDate: string | null; recent: StudyPlan[]; medium: StudyPlan[]; old: StudyPlan[]; recommended: StudyPlan[]; archived: StudyPlan[] };
-type DashboardPayload = { plans: StudyPlan[]; overduePlans: StudyPlan[]; recovery?: RecoverySummary; logs: StudyLog[]; completedDates: string[]; legacyLogsCount: number; goal: Goal | null; latestScore: ToeicScore | null; reviewNotes: ReviewNote[] };
+type DashboardPayload = { plans: StudyPlan[]; overduePlans: StudyPlan[]; recovery?: RecoverySummary; logs: StudyLog[]; completedDates: string[]; legacyLogsCount: number; goal: Goal | null; latestScore: ToeicScore | null; reviewNotes: ReviewNote[]; quizMistakes: QuizMistake[] };
 type AuthState = 'checking' | 'guest' | 'authenticated';
 type Editor = 'external-log' | 'plan' | 'goal' | null;
 type CompletionTarget = { type: 'plan' | 'material'; id: string; title: string; part: string; minutes: number; date: string };
@@ -144,6 +147,7 @@ export default function Home() {
   const currentWeekStart = useMemo(() => getWeek(today)[0], [today]);
   const [selectedDate, setSelectedDate] = useState(today);
   const [focusedMaterialId, setFocusedMaterialId] = useState('');
+  const [focusedQuizItemIndex, setFocusedQuizItemIndex] = useState<number | null>(null);
   const [logWeekStart, setLogWeekStart] = useState(currentWeekStart);
   const [plans, setPlans] = useState<StudyPlan[]>([]);
   const [recovery, setRecovery] = useState<RecoverySummary>(emptyRecovery);
@@ -154,6 +158,9 @@ export default function Home() {
   const [goal, setGoal] = useState<Goal | null>(null);
   const [latestScore, setLatestScore] = useState<ToeicScore | null>(null);
   const [reviewNotes, setReviewNotes] = useState<ReviewNote[]>([]);
+  const [quizMistakes, setQuizMistakes] = useState<QuizMistake[]>([]);
+  const [quizAnswers, setQuizAnswers] = useState<Record<string, QuizAnswerState>>({});
+  const [mistakeAnswers, setMistakeAnswers] = useState<Record<string, QuizAnswerState>>({});
   const [editor, setEditor] = useState<Editor>(null);
   const [completionTarget, setCompletionTarget] = useState<CompletionTarget | null>(null);
   const [rescheduleTarget, setRescheduleTarget] = useState<RescheduleTarget | null>(null);
@@ -165,13 +172,17 @@ export default function Home() {
   const [speakingAction, setSpeakingAction] = useState<SpeakingTarget>(null);
   const [speakingTarget, setSpeakingTarget] = useState<SpeakingTarget>(null);
   const speechRun = useRef(0);
+  const dashboardLoadRun = useRef(0);
   const [authState, setAuthState] = useState<AuthState>('checking');
   const [accessEmail, setAccessEmail] = useState('');
+  const selectedDateRef = useRef(selectedDate);
   const week = useMemo(() => getWeek(selectedDate), [selectedDate]);
   const logWeek = useMemo(() => getWeek(logWeekStart), [logWeekStart]);
 
-  const loadDashboard = useCallback(async () => {
-    setLoading(true);
+  const loadDashboard = useCallback(async (silent = false) => {
+    if (selectedDate !== selectedDateRef.current) return;
+    const loadRun = ++dashboardLoadRun.current;
+    if (!silent) setLoading(true);
     const query = new URLSearchParams({ date: selectedDate, recoveryDate: today, calendarStart: week[0], calendarEnd: week[6], logStart: logWeek[0], logEnd: logWeek[6] });
     const [dashboardResult, materialsResult] = await Promise.allSettled([
       fetch(`/api/dashboard?${query}`, { cache: 'no-store' }).then(async (response) => {
@@ -183,13 +194,19 @@ export default function Home() {
         return response.json() as Promise<unknown>;
       }),
     ]);
+    if (loadRun !== dashboardLoadRun.current) return;
     if (dashboardResult.status === 'fulfilled') {
       const data = dashboardResult.value;
+      const nextMistakes = data.quizMistakes ?? [];
       setPlans(data.plans); setLogs(data.logs); setCompletedDates(data.completedDates);
       setRecovery(data.recovery ?? emptyRecovery());
-      setLegacyLogsCount(data.legacyLogsCount ?? 0); setGoal(data.goal); setLatestScore(data.latestScore); setReviewNotes(data.reviewNotes ?? []);
+      setLegacyLogsCount(data.legacyLogsCount ?? 0); setGoal(data.goal); setLatestScore(data.latestScore); setReviewNotes(data.reviewNotes ?? []); setQuizMistakes(nextMistakes);
+      setMistakeAnswers((current) => Object.fromEntries(nextMistakes.flatMap((mistake) => {
+        const answer = current[mistake.id];
+        return answer && (answer.saving || answer.failed || answer.requestId === mistake.latestRequestId) ? [[mistake.id, answer]] : [];
+      })));
     } else {
-      setPlans([]); setRecovery(emptyRecovery()); setLogs([]); setCompletedDates([]); setReviewNotes([]);
+      setPlans([]); setRecovery(emptyRecovery()); setLogs([]); setCompletedDates([]); setReviewNotes([]); setQuizMistakes([]);
       setNotice('학습 기록을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.');
     }
     if (materialsResult.status === 'fulfilled') setMaterials(readMaterials(materialsResult.value));
@@ -204,9 +221,12 @@ export default function Home() {
     const params = new URLSearchParams(window.location.search);
     const date = params.get('date') ?? '';
     // Restore shareable plan links after hydration without rendering different server/client markup.
+    if (validDashboardDate(date)) selectDate(date);
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (validDashboardDate(date)) setSelectedDate(date);
     setFocusedMaterialId(params.get('material') ?? '');
+    const rawItemIndex = params.get('item');
+    const itemIndex = rawItemIndex === null ? Number.NaN : Number(rawItemIndex);
+    setFocusedQuizItemIndex(Number.isInteger(itemIndex) && itemIndex >= 0 && itemIndex <= 20 ? itemIndex : null);
   }, []);
   useEffect(() => {
     let active = true;
@@ -247,8 +267,17 @@ export default function Home() {
     if (!focusedMaterialId || loading) return;
     const material = materials.find((item) => item.id === focusedMaterialId);
     if (!material) return;
-    requestAnimationFrame(() => document.getElementById(`material-${focusedMaterialId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
-  }, [focusedMaterialId, loading, materials]);
+    requestAnimationFrame(() => {
+      const section = document.getElementById('materials-section') as HTMLDetailsElement | null;
+      const card = document.getElementById(`material-${focusedMaterialId}`) as HTMLDetailsElement | null;
+      if (section) section.open = true;
+      if (card) card.open = true;
+      const quizItem = focusedQuizItemIndex === null ? null : document.getElementById(`quiz-${focusedMaterialId}-${focusedQuizItemIndex}`);
+      const target = quizItem ?? card;
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (quizItem instanceof HTMLElement) quizItem.focus({ preventScroll: true });
+    });
+  }, [focusedMaterialId, focusedQuizItemIndex, loading, materials]);
 
   const studiedThisWeek = new Set(completedDates).size;
   const weekPercent = Math.round((studiedThisWeek / 7) * 100);
@@ -267,8 +296,15 @@ export default function Home() {
     const params = new URLSearchParams(window.location.search);
     params.set('date', plan.planDate);
     params.set('material', materialId);
+    params.delete('item');
     window.history.pushState({}, '', `${window.location.pathname}?${params}`);
+    setFocusedQuizItemIndex(null);
     setFocusedMaterialId(materialId);
+  }
+
+  function selectDate(value: string) {
+    selectedDateRef.current = value;
+    setSelectedDate(value);
   }
 
   function speechLanguage(material: StudyMaterial): 'en-US' | 'ja-JP' {
@@ -379,6 +415,137 @@ export default function Home() {
 
   function speakExplanation(material: StudyMaterial, item: StudyItem, index: number) {
     playSegments(material, `item-${index}-explanation`, 'ko-KR', [{ text: `정답. ${item.answer}. 해설. ${item.explanation}`, key: `item-${index}-explanation` }]);
+  }
+
+  async function saveQuizAnswer(input: {
+    materialId: string;
+    itemIndex: number;
+    selectedLabel: StudyOption['label'];
+    requestId: string;
+    attemptedAt: string;
+    itemVersion?: string;
+    itemHash?: string;
+  }): Promise<QuizSaveResult> {
+    try {
+      const response = await fetch('/api/dashboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'quiz-attempt', ...input }),
+      });
+      if (!response.ok) {
+        if (response.status === 409) {
+          setNotice(await responseError(response, '학습 자료가 갱신되었습니다.'));
+          await loadDashboard(true);
+          return 'stale';
+        }
+        if (!handleUnauthorized(response)) setNotice(await responseError(response, '오답 기록을 저장하지 못했어요.'));
+        return null;
+      }
+      const result = await response.json() as { correct?: unknown; resolved?: unknown; itemHash?: unknown };
+      if (typeof result.correct !== 'boolean' || typeof result.itemHash !== 'string' || !/^[0-9a-f]{64}$/i.test(result.itemHash)) {
+        setNotice('오답 기록 응답을 확인하지 못했어요. 잠시 후 다시 시도해 주세요.');
+        return null;
+      }
+      return { correct: result.correct, resolved: Boolean(result.resolved), itemHash: result.itemHash };
+    } catch {
+      setNotice('오답 기록을 저장하지 못했어요. 네트워크 연결을 확인해 주세요.');
+      return null;
+    }
+  }
+
+  async function chooseQuizOption(material: StudyMaterial, item: StudyItem, itemIndex: number, selectedLabel: StudyOption['label'], retry = false) {
+    if (!requireAdmin()) return;
+    const snapshot = quizItemSnapshot(item.prompt, item.options, item.answer, item.explanation);
+    if (!snapshot) return;
+    const key = `${material.id}:${itemIndex}`;
+    const previousAnswer = quizAnswers[key];
+    if (previousAnswer && !retry) return;
+    const requestId = retry && previousAnswer ? previousAnswer.requestId : crypto.randomUUID();
+    const attemptedAt = retry && previousAnswer ? previousAnswer.attemptedAt : new Date().toISOString();
+    const pending = { selectedLabel, saving: true, saved: false, failed: false, correct: null, requestId, attemptedAt };
+    setQuizAnswers((current) => ({ ...current, [key]: pending }));
+    const result = await saveQuizAnswer({
+      materialId: material.id,
+      itemIndex,
+      selectedLabel,
+      requestId,
+      attemptedAt,
+      itemVersion: quizItemVersion(snapshot),
+    });
+    if (result === 'stale') {
+      setQuizAnswers((current) => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+      return;
+    }
+    setQuizAnswers((current) => ({
+      ...current,
+      [key]: { ...pending, saving: false, saved: Boolean(result), failed: !result, correct: result?.correct ?? null },
+    }));
+    if (!result) return;
+    const mistakeId = `${material.id}:${itemIndex}:${result.itemHash}`;
+    setMistakeAnswers((current) => {
+      const next = { ...current };
+      delete next[mistakeId];
+      return next;
+    });
+    await loadDashboard(true);
+  }
+
+  async function chooseMistakeOption(mistake: QuizMistake, selectedLabel: StudyOption['label'], retry = false) {
+    if (!requireAdmin()) return;
+    const key = mistake.id;
+    const previousAnswer = mistakeAnswers[key];
+    if (previousAnswer && !retry) return;
+    const requestId = retry && previousAnswer ? previousAnswer.requestId : crypto.randomUUID();
+    const attemptedAt = retry && previousAnswer ? previousAnswer.attemptedAt : new Date().toISOString();
+    const pending = { selectedLabel, saving: true, saved: false, failed: false, correct: null, requestId, attemptedAt };
+    setMistakeAnswers((current) => ({ ...current, [key]: pending }));
+    const result = await saveQuizAnswer({
+      materialId: mistake.materialId,
+      itemIndex: mistake.itemIndex,
+      selectedLabel,
+      requestId,
+      attemptedAt,
+      itemHash: mistake.itemHash,
+    });
+    if (result === 'stale') {
+      setMistakeAnswers((current) => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+      return;
+    }
+    setMistakeAnswers((current) => ({
+      ...current,
+      [key]: { ...pending, saving: false, saved: Boolean(result), failed: !result, correct: result?.correct ?? null },
+    }));
+    if (!result) return;
+    if (result.correct) setNotice('맞았습니다. 이 문제를 오답노트에서 해결 처리했어요.');
+    await loadDashboard(true);
+  }
+
+  function retryMistake(mistake: QuizMistake) {
+    const key = mistake.id;
+    setMistakeAnswers((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  }
+
+  function openMistakeMaterial(mistake: QuizMistake) {
+    const params = new URLSearchParams(window.location.search);
+    params.set('date', mistake.materialDate);
+    params.set('material', mistake.materialId);
+    params.set('item', String(mistake.itemIndex));
+    window.history.pushState({}, '', `${window.location.pathname}?${params}`);
+    selectDate(mistake.materialDate);
+    setFocusedMaterialId(mistake.materialId);
+    setFocusedQuizItemIndex(mistake.itemIndex);
   }
   const recommendedPlanIds = new Set(recovery.recommended.map((plan) => plan.id));
   const recoveryWeekend = [0, 6].includes(toLocalDate(today).getDay());
@@ -504,7 +671,7 @@ export default function Home() {
           {authState === 'authenticated'
             ? <a className="admin-button" href="/cdn-cgi/access/logout" title={accessEmail || 'Google Access 로그인됨'}>Google 로그아웃</a>
             : <span className="access-status">{authState === 'checking' ? 'Google 인증 확인 중' : 'Google 인증 필요'}</span>}
-          {selectedDate !== today && <button className="icon-button" onClick={() => setSelectedDate(today)}>오늘로 돌아가기</button>}
+          {selectedDate !== today && <button className="icon-button" onClick={() => selectDate(today)}>오늘로 돌아가기</button>}
         </div>
       </nav>
 
@@ -518,7 +685,7 @@ export default function Home() {
           <summary className="section-heading"><div><p className="mini-label">WEEKLY VIEW</p><h2>{formatShort(week[0])} – {formatShort(week[6])}</h2></div><p><strong>{studiedThisWeek}</strong> / 7일 공부 <Marker /></p></summary>
           <div className="accordion-body week-grid">
             {week.map((date) => { const value = toLocalDate(date); const done = completedDates.includes(date); return (
-              <button key={date} onClick={() => setSelectedDate(date)} className={`day-cell ${done ? 'done' : ''} ${date === selectedDate ? 'today' : ''}`} aria-current={date === selectedDate ? 'date' : undefined}>
+              <button key={date} onClick={() => selectDate(date)} className={`day-cell ${done ? 'done' : ''} ${date === selectedDate ? 'today' : ''}`} aria-current={date === selectedDate ? 'date' : undefined}>
                 <span>{days[value.getDay()]}</span><strong>{value.getDate()}</strong><i>{done ? '✓' : date === today ? '오늘' : '—'}</i>
               </button>
             ); })}
@@ -580,7 +747,7 @@ export default function Home() {
           </details>
         </div>
 
-        <details className="accordion-card materials-section" key={`materials-${selectedDate}`}>
+        <details className="accordion-card materials-section" id="materials-section" key={`materials-${selectedDate}`}>
           <summary className="section-heading materials-heading"><div><p className="mini-label">DAILY MATERIALS</p><h2>예약 학습 자료</h2></div><p>{sortedMaterials.length}개 도착 <Marker /></p></summary>
           <div className="accordion-body">
             {loading ? <div className="empty-state material-empty">예약 자료를 불러오는 중...</div> : sortedMaterials.length ? <div className="materials-grid">
@@ -609,6 +776,40 @@ export default function Home() {
                         const sentencePlaying = speakingAction?.materialId === material.id && speakingAction.key === `item-${index}-sentence`;
                         const questionPlaying = speakingAction?.materialId === material.id && speakingAction.key === `item-${index}-question`;
                         const explanationPlaying = speakingAction?.materialId === material.id && speakingAction.key === `item-${index}-explanation`;
+                        const quizKey = `${material.id}:${index}`;
+                        const quizAnswer = quizAnswers[quizKey];
+                        const correctLabel = material.kind === 'toeic' && item.options?.length === 4 ? correctOptionLabel(item.answer) : null;
+                        if (correctLabel && item.options) {
+                          const isCorrect = quizAnswer?.correct === true;
+                          const promptId = `quiz-prompt-${material.id}-${index}`;
+                          return <article className="material-item quiz-item" id={`quiz-${material.id}-${index}`} tabIndex={-1} key={quizKey}>
+                            <header><span>{String(index + 1).padStart(2, '0')}</span><small>하나를 선택하세요</small></header>
+                            <strong className="quiz-prompt" id={promptId} lang="en">{item.prompt}</strong>
+                            <div className="quiz-options" role="radiogroup" aria-labelledby={promptId}>
+                              {item.options.map((option) => {
+                                const chosen = quizAnswer?.selectedLabel === option.label;
+                                const answer = option.label === correctLabel;
+                                const revealed = quizAnswer?.saved;
+                                const className = !revealed && chosen ? 'is-selected' : revealed && chosen ? (answer ? 'is-correct' : 'is-wrong') : revealed && answer ? 'is-answer' : '';
+                                const resultLabel = revealed && answer ? '정답' : revealed && chosen ? '틀림' : '';
+                                return <button type="button" role="radio" key={option.label} disabled={Boolean(quizAnswer)} className={className} aria-checked={chosen} onClick={() => void chooseQuizOption(material, item, index, option.label)}>
+                                  <b>{option.label}</b><span lang="en">{option.text}</span>{resultLabel && <i>{resultLabel}</i>}
+                                </button>;
+                              })}
+                            </div>
+                            {quizAnswer?.saving && <div className="quiz-result pending" role="status" aria-live="polite"><strong>정답을 확인하고 있습니다.</strong></div>}
+                            {quizAnswer?.failed && <div className="quiz-result wrong" role="status" aria-live="polite">
+                              <strong>정답을 확인하지 못했습니다.</strong><small>연결 상태를 확인한 뒤 같은 답으로 다시 시도해 주세요.</small>
+                              <div className="quiz-result-actions"><button type="button" onClick={() => void chooseQuizOption(material, item, index, quizAnswer.selectedLabel, true)}>저장 다시 시도</button></div>
+                            </div>}
+                            {quizAnswer?.saved && <div className={`quiz-result ${isCorrect ? 'correct' : 'wrong'}`} role="status" aria-live="polite">
+                              <strong>{isCorrect ? '맞았습니다.' : `틀렸습니다. 정답은 ${correctLabel}입니다.`}</strong>
+                              <p><b>정답</b>{item.answer}</p>
+                              {item.explanation && <p><b>해설</b>{item.explanation}</p>}
+                              {!isCorrect && <small>오답노트에 저장했습니다.</small>}
+                            </div>}
+                          </article>;
+                        }
                         return <details className={`material-item ${isSpeaking(material.id, `item-${index}-prompt`) ? 'is-speaking' : ''}`} key={`${material.id}-${index}`}><summary><span>{String(index + 1).padStart(2, '0')}</span><div><strong lang={meta.language}>{item.prompt}</strong></div></summary>
                           {canListen && <div className="material-item-actions">
                             {item.options?.length ? <button disabled={listen.disabled} onClick={() => speakQuestion(material, item, index)} aria-pressed={questionPlaying}>{questionPlaying ? '듣기 멈추기' : '문제 전체 듣기'}</button> : null}
@@ -625,6 +826,54 @@ export default function Home() {
             </div> : <div className="empty-state material-empty"><strong>이 날짜에 도착한 예약 학습 자료가 없어요.</strong><span>영어, 일본어, TOEIC 자료가 도착하면 여기에 모아 보여드려요.</span></div>}
           </div>
         </details>
+
+        <section className="mistake-section" aria-labelledby="mistake-title">
+          <header className="mistake-heading">
+            <div><p className="mini-label">TOEIC WRONG ANSWERS</p><h2 id="mistake-title">TOEIC 오답노트</h2><p>틀린 문제만 모아 두고, 다시 맞히면 목록에서 해결됩니다.</p></div>
+            <strong>{quizMistakes.length}개</strong>
+          </header>
+          {quizMistakes.length ? <div className="mistake-list">{quizMistakes.map((mistake) => {
+            const mistakeKey = mistake.id;
+            const answerState = mistakeAnswers[mistakeKey];
+            const isCorrect = answerState?.correct === true;
+            const promptId = `mistake-prompt-${mistake.id}`;
+            return <details className="mistake-card" key={mistake.id}>
+              <summary>
+                <div><span>{formatShort(mistake.materialDate)} · {mistake.itemIndex + 1}번</span><strong>{mistake.prompt}</strong><small>최근 오답 {mistake.selectedLabel} · 누적 {mistake.attempts}회</small></div>
+                <Marker />
+              </summary>
+              <div className="mistake-card-body">
+                <strong className="quiz-prompt" id={promptId} lang="en">{mistake.prompt}</strong>
+                <div className="quiz-options" role="radiogroup" aria-labelledby={promptId}>
+                  {mistake.options.map((option) => {
+                    const chosen = answerState?.selectedLabel === option.label;
+                    const answer = option.label === mistake.correctLabel;
+                    const revealed = answerState?.saved;
+                    const className = !revealed && chosen ? 'is-selected' : revealed && chosen ? (answer ? 'is-correct' : 'is-wrong') : revealed && answer ? 'is-answer' : '';
+                    const resultLabel = revealed && answer ? '정답' : revealed && chosen ? '틀림' : '';
+                    return <button type="button" role="radio" key={option.label} disabled={Boolean(answerState)} className={className} aria-checked={chosen} onClick={() => void chooseMistakeOption(mistake, option.label)}>
+                      <b>{option.label}</b><span lang="en">{option.text}</span>{resultLabel && <i>{resultLabel}</i>}
+                    </button>;
+                  })}
+                </div>
+                {answerState?.saving && <div className="quiz-result pending" role="status" aria-live="polite"><strong>정답을 확인하고 있습니다.</strong></div>}
+                {answerState?.saved && <div className={`quiz-result ${isCorrect ? 'correct' : 'wrong'}`} role="status" aria-live="polite">
+                  <strong>{isCorrect ? '맞았습니다. 오답을 해결하는 중입니다.' : `아직 틀렸습니다. 정답은 ${mistake.correctLabel}입니다.`}</strong>
+                  {mistake.explanation && <p><b>해설</b>{mistake.explanation}</p>}
+                  <small>결과를 저장했습니다.</small>
+                </div>}
+                {answerState?.failed && <div className="quiz-result wrong" role="status" aria-live="polite">
+                  <strong>정답을 확인하지 못했습니다.</strong><small>연결 상태를 확인한 뒤 같은 답으로 저장을 다시 시도해 주세요.</small>
+                </div>}
+                <div className="mistake-actions">
+                  {answerState?.failed && <button type="button" onClick={() => void chooseMistakeOption(mistake, answerState.selectedLabel, true)}>저장 다시 시도</button>}
+                  {answerState?.saved && !isCorrect && <button type="button" onClick={() => retryMistake(mistake)}>다시 풀기</button>}
+                  <button type="button" className="subtle" onClick={() => openMistakeMaterial(mistake)}>원래 문제 보기</button>
+                </div>
+              </div>
+            </details>;
+          })}</div> : <div className="empty-state mistake-empty"><strong>아직 저장된 TOEIC 오답이 없습니다.</strong><span>TOEIC 문제에서 틀린 문항만 여기에 자동으로 모입니다.</span></div>}
+        </section>
 
         <details className="accordion-card recent-section" key={`logs-${logWeek[0]}`}>
           <summary className="section-heading recent-heading"><div><p className="mini-label">STUDY LOG</p><h2>주간 학습 기록</h2></div><p>{logs.length}개 기록 <Marker /></p></summary>

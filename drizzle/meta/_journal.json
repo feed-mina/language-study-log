@@ -43,6 +43,13 @@
       "when": 1788674480806,
       "tag": "0005_plan_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1788775539951,
+      "tag": "0006_broken_celestials",
+      "breakpoints": true
     }
   ]
 }

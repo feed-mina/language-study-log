@@ -1,9 +1,11 @@
 import type { AssetRow, ContentKind, ContentRow, StudyPayload, WorkerEnv } from './types';
 import { createEmptyCard } from 'ts-fsrs';
 import { ensureStudyCycleSchema } from './study-cycle';
+import { ensureQuizMistakesSchema } from './quiz-mistakes';
 
 export async function ensureAutomationSchema(env: WorkerEnv): Promise<void> {
   await ensureStudyCycleSchema(env.DB);
+  await ensureQuizMistakesSchema(env.DB);
   await env.DB.batch([
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS study_plans (
       id TEXT PRIMARY KEY,

@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 
+import { correctOptionLabel } from '../app/dashboard-utils.ts';
 import { buildStudyLogSql, parseStudyLog, sqlLiteral } from '../scripts/study-log-to-sql.ts';
 
 function studyLog(overrides: { date?: string; kind?: 'english' | 'japanese' | 'toeic'; source?: string; items?: number; title?: string; structuredOptions?: boolean } = {}) {
@@ -64,6 +66,16 @@ test('accepts and preserves structured TOEIC A, B, C, D options', () => {
     { label: 'A', text: 'Choice A' }, { label: 'B', text: 'Choice B' },
     { label: 'C', text: 'Choice C' }, { label: 'D', text: 'Choice D' },
   ]);
+});
+
+test('the latest saved TOEIC lesson exposes four choices and a detectable answer for every item', () => {
+  const path = 'study-logs/2026/09/07/toeic.md';
+  const parsed = parseStudyLog(path, readFileSync(new URL(`../${path}`, import.meta.url), 'utf8'));
+  assert.equal(parsed.payload.items.length, 10);
+  for (const item of parsed.payload.items) {
+    assert.deepEqual(item.options?.map((option) => option.label), ['A', 'B', 'C', 'D']);
+    assert.notEqual(correctOptionLabel(item.answer), null);
+  }
 });
 
 test('rejects invalid dates and path/frontmatter mismatches', () => {

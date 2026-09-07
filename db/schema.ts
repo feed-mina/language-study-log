@@ -172,3 +172,22 @@ export const toeicScores = sqliteTable('toeic_scores', {
   source: text('source').notNull().default(''),
   createdAt: text('created_at').notNull(),
 }, (table) => [index('idx_toeic_scores_date').on(table.scoreDate, table.createdAt)]);
+
+export const quizAttempts = sqliteTable('quiz_attempts', {
+  sequence: integer('sequence').primaryKey({ autoIncrement: true }),
+  requestId: text('request_id').notNull(),
+  materialId: text('material_id').notNull(),
+  materialDate: text('material_date').notNull(),
+  materialTitle: text('material_title').notNull(),
+  itemIndex: integer('item_index').notNull(),
+  itemHash: text('item_hash').notNull(),
+  itemJson: text('item_json').notNull(),
+  selectedLabel: text('selected_label').notNull(),
+  correct: integer('correct').notNull(),
+  resolved: integer('resolved').notNull().default(0),
+  attemptedAt: text('attempted_at').notNull(),
+}, (table) => [
+  uniqueIndex('uq_quiz_attempts_request').on(table.requestId),
+  index('idx_quiz_attempts_item').on(table.materialId, table.itemIndex, table.itemHash, table.attemptedAt, table.sequence),
+  index('idx_quiz_attempts_time').on(table.attemptedAt, table.sequence),
+]);
