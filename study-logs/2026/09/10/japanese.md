@@ -3,7 +3,7 @@ date: "2026-09-10"
 kind: "japanese"
 source: "chatgpt-automation"
 automation_id: "6a88fd260e24819181e888d1c2d60a44"
-generated_at: "2026-09-10T08:36:26+09:00"
+generated_at: "2026-09-10T08:37:59+09:00"
 ---
 # 일본어 N5: 목적지의 へ와 행동 장소의 で
 
