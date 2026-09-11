@@ -1,0 +1,2 @@
+# Remote D1 trigger parsing requires consistent line endings on every checkout.
+drizzle/*.sql text eol=lf

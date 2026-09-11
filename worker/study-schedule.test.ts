@@ -2,9 +2,19 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { Miniflare } from 'miniflare';
+import { unstable_splitSqlQuery } from 'wrangler';
 import { calendarDays, parseStart, kstDate, validDate } from '../app/schedule-utils.ts';
-import { ensureScheduleSchema } from './schedule-schema.ts';
+import { ensureScheduleSchema, scheduleSchema } from './schedule-schema.ts';
 import { mutateSchedule, rateSessionCard, readSchedule, recoveryPage } from './study-schedule.ts';
+
+test('migration and runtime guards avoid remote D1 CASE/END splitting and use identical SQL', () => {
+  const sql = readFileSync(new URL('../drizzle/0007_study_schedule.sql', import.meta.url), 'utf8');
+  assert.doesNotMatch(sql, /\r/);
+  assert.doesNotMatch(sql, /\bCASE\b(?=\s+WHEN)/i);
+  const statements = unstable_splitSqlQuery(sql);
+  const normalize = (value: string) => value.trim().replace(/;$/, '').replace(/\s+/g, ' ');
+  assert.deepEqual(statements.map(normalize), scheduleSchema.map(normalize));
+});
 
 test('calendar keeps KST boundaries, Monday grids, leap days and strict times', () => {
   assert.equal(kstDate(new Date('2026-09-10T15:00:00Z')), '2026-09-11');
@@ -20,7 +30,7 @@ test('schedule persists paging, time conflicts, replan history and atomic review
   context.after(() => mf.dispose()); const db = await mf.getD1Database('DB');
   const migrations = new URL('../drizzle/', import.meta.url);
   for (const file of readdirSync(migrations).filter(x => x.endsWith('.sql')).sort()) {
-    const statements = readFileSync(new URL(file, migrations), 'utf8').split('--> statement-breakpoint').map(x => x.trim()).filter(Boolean);
+    const statements = unstable_splitSqlQuery(readFileSync(new URL(file, migrations), 'utf8'));
     await db.batch(statements.map(sql => db.prepare(sql)));
   }
   await ensureScheduleSchema(db); await ensureScheduleSchema(db);
