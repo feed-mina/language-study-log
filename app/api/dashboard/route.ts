@@ -114,11 +114,12 @@ export async function GET(request: Request) {
   const logStart = validDate(url.searchParams.get('logStart')) ? url.searchParams.get('logStart')! : (validDate(url.searchParams.get('start')) ? url.searchParams.get('start')! : calendarStart);
   const logEnd = validDate(url.searchParams.get('logEnd')) ? url.searchParams.get('logEnd')! : (validDate(url.searchParams.get('end')) ? url.searchParams.get('end')! : calendarEnd);
   const database = db();
+  const includeRecovery = url.searchParams.get('recovery') !== 'none';
   const [plansResult, overdueResult, archivedResult, recoveryTodayResult, logsResult, datesResult, legacyResult, goalResult, latestScore, reviewResult, quizMistakes] = await Promise.all([
     database.prepare("SELECT * FROM study_plans WHERE plan_date = ? AND status <> 'archived' ORDER BY created_at ASC").bind(date).all<Row>(),
-    database.prepare(`SELECT * FROM study_plans WHERE plan_date < ? AND status = 'planned'
-      ORDER BY plan_date ASC, created_at ASC`).bind(recoveryDate).all<Row>(),
-    database.prepare("SELECT * FROM study_plans WHERE status = 'archived' ORDER BY archived_at DESC, created_at DESC LIMIT 50").all<Row>(),
+    includeRecovery ? database.prepare(`SELECT * FROM study_plans WHERE plan_date < ? AND status = 'planned'
+      ORDER BY plan_date ASC, created_at ASC`).bind(recoveryDate).all<Row>() : Promise.resolve({ results: [] as Row[] }),
+    includeRecovery ? database.prepare("SELECT * FROM study_plans WHERE status = 'archived' ORDER BY archived_at DESC, created_at DESC LIMIT 50").all<Row>() : Promise.resolve({ results: [] as Row[] }),
     database.prepare("SELECT COUNT(*) AS count FROM study_plans WHERE plan_date = ? AND status = 'planned'").bind(recoveryDate).first<{ count: number }>(),
     database.prepare(`SELECT * FROM study_logs WHERE study_date BETWEEN ? AND ? AND source_type <> 'legacy'
       ORDER BY study_date ASC, created_at ASC`).bind(logStart, logEnd).all<Row>(),

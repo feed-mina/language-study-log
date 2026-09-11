@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import StudySchedule from './components/StudySchedule';
 import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { correctOptionLabel, dDay, getWeek, kstToday, quizItemSnapshot, quizItemVersion, shiftDate, splitLegacyQuestion, toLocalDate, weekLabel, type StudyOption } from './dashboard-utils';
@@ -19,12 +20,10 @@ type ReviewNote = { title: string; studyDate: string; note: string; confusedItem
 type QuizMistake = { id: string; latestRequestId: string; materialId: string; materialDate: string; materialTitle: string; itemIndex: number; itemHash: string; prompt: string; options: StudyOption[]; selectedLabel: StudyOption['label']; correctLabel: StudyOption['label']; explanation: string; attempts: number; firstWrongAt: string; lastWrongAt: string };
 type QuizAnswerState = { selectedLabel: StudyOption['label']; saving: boolean; saved: boolean; failed: boolean; correct: boolean | null; requestId: string; attemptedAt: string };
 type QuizSaveResult = { correct: boolean; resolved: boolean; itemHash: string } | 'stale' | null;
-type RecoverySummary = { totalCount: number; totalMinutes: number; oldestPlanDate: string | null; recent: StudyPlan[]; medium: StudyPlan[]; old: StudyPlan[]; recommended: StudyPlan[]; archived: StudyPlan[] };
-type DashboardPayload = { plans: StudyPlan[]; overduePlans: StudyPlan[]; recovery?: RecoverySummary; logs: StudyLog[]; completedDates: string[]; legacyLogsCount: number; goal: Goal | null; latestScore: ToeicScore | null; reviewNotes: ReviewNote[]; quizMistakes: QuizMistake[] };
+type DashboardPayload = { plans: StudyPlan[]; overduePlans: StudyPlan[]; logs: StudyLog[]; completedDates: string[]; legacyLogsCount: number; goal: Goal | null; latestScore: ToeicScore | null; reviewNotes: ReviewNote[]; quizMistakes: QuizMistake[] };
 type AuthState = 'checking' | 'guest' | 'authenticated';
 type Editor = 'external-log' | 'plan' | 'goal' | null;
 type CompletionTarget = { type: 'plan' | 'material'; id: string; title: string; part: string; minutes: number; date: string };
-type RescheduleTarget = { plan: StudyPlan; date: string };
 type VoiceStatus = 'preparing' | 'ready' | 'unsupported';
 type SpeakingTarget = { materialId: string; key: string } | null;
 type SpeechSegment = { text?: string; key?: string; pause?: number };
@@ -93,7 +92,6 @@ function formatShort(value: string) { const date = toLocalDate(value); return `$
 function formatCreated(value: string) { return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value)); }
 function validDashboardDate(value: string) { return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(toLocalDate(value).valueOf()); }
 
-const emptyRecovery = (): RecoverySummary => ({ totalCount: 0, totalMinutes: 0, oldestPlanDate: null, recent: [], medium: [], old: [], recommended: [], archived: [] });
 
 async function responseError(response: Response, fallback: string): Promise<string> {
   const raw = (await response.text()).trim().slice(0, 400);
@@ -149,8 +147,8 @@ export default function Home() {
   const [focusedMaterialId, setFocusedMaterialId] = useState('');
   const [focusedQuizItemIndex, setFocusedQuizItemIndex] = useState<number | null>(null);
   const [logWeekStart, setLogWeekStart] = useState(currentWeekStart);
+  const [scheduleRevision, setScheduleRevision] = useState(0);
   const [plans, setPlans] = useState<StudyPlan[]>([]);
-  const [recovery, setRecovery] = useState<RecoverySummary>(emptyRecovery);
   const [logs, setLogs] = useState<StudyLog[]>([]);
   const [materials, setMaterials] = useState<StudyMaterial[]>([]);
   const [completedDates, setCompletedDates] = useState<string[]>([]);
@@ -163,7 +161,6 @@ export default function Home() {
   const [mistakeAnswers, setMistakeAnswers] = useState<Record<string, QuizAnswerState>>({});
   const [editor, setEditor] = useState<Editor>(null);
   const [completionTarget, setCompletionTarget] = useState<CompletionTarget | null>(null);
-  const [rescheduleTarget, setRescheduleTarget] = useState<RescheduleTarget | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
@@ -183,7 +180,7 @@ export default function Home() {
     if (selectedDate !== selectedDateRef.current) return;
     const loadRun = ++dashboardLoadRun.current;
     if (!silent) setLoading(true);
-    const query = new URLSearchParams({ date: selectedDate, recoveryDate: today, calendarStart: week[0], calendarEnd: week[6], logStart: logWeek[0], logEnd: logWeek[6] });
+    const query = new URLSearchParams({ date: selectedDate, recovery: 'none', recoveryDate: today, calendarStart: week[0], calendarEnd: week[6], logStart: logWeek[0], logEnd: logWeek[6] });
     const [dashboardResult, materialsResult] = await Promise.allSettled([
       fetch(`/api/dashboard?${query}`, { cache: 'no-store' }).then(async (response) => {
         if (!response.ok) throw new Error('dashboard load failed');
@@ -199,14 +196,14 @@ export default function Home() {
       const data = dashboardResult.value;
       const nextMistakes = data.quizMistakes ?? [];
       setPlans(data.plans); setLogs(data.logs); setCompletedDates(data.completedDates);
-      setRecovery(data.recovery ?? emptyRecovery());
+      setScheduleRevision(value => value + 1);
       setLegacyLogsCount(data.legacyLogsCount ?? 0); setGoal(data.goal); setLatestScore(data.latestScore); setReviewNotes(data.reviewNotes ?? []); setQuizMistakes(nextMistakes);
       setMistakeAnswers((current) => Object.fromEntries(nextMistakes.flatMap((mistake) => {
         const answer = current[mistake.id];
         return answer && (answer.saving || answer.failed || answer.requestId === mistake.latestRequestId) ? [[mistake.id, answer]] : [];
       })));
     } else {
-      setPlans([]); setRecovery(emptyRecovery()); setLogs([]); setCompletedDates([]); setReviewNotes([]); setQuizMistakes([]);
+      setPlans([]); setLogs([]); setCompletedDates([]); setReviewNotes([]); setQuizMistakes([]);
       setNotice('학습 기록을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.');
     }
     if (materialsResult.status === 'fulfilled') setMaterials(readMaterials(materialsResult.value));
@@ -547,8 +544,6 @@ export default function Home() {
     setFocusedMaterialId(mistake.materialId);
     setFocusedQuizItemIndex(mistake.itemIndex);
   }
-  const recommendedPlanIds = new Set(recovery.recommended.map((plan) => plan.id));
-  const recoveryWeekend = [0, 6].includes(toLocalDate(today).getDay());
 
   function requireAdmin(): boolean {
     if (authState === 'authenticated') return true;
@@ -558,7 +553,7 @@ export default function Home() {
 
   function handleUnauthorized(response: Response): boolean {
     if (response.status !== 401) return false;
-    setAuthState('guest'); setAccessEmail(''); setEditor(null); setCompletionTarget(null); setRescheduleTarget(null);
+    setAuthState('guest'); setAccessEmail(''); setEditor(null); setCompletionTarget(null);
     setNotice('Google 로그인 인증이 만료됐어요. 페이지를 새로고침해 다시 로그인해 주세요.');
     return true;
   }
@@ -611,55 +606,11 @@ export default function Home() {
     else if (!handleUnauthorized(response)) setNotice('학습 시작 상태를 저장하지 못했어요.');
   }
 
-  async function runRecoveryAction(plan: StudyPlan, action: 'reschedule' | 'archive' | 'restore', targetDate?: string) {
-    if (!requireAdmin()) return;
-    const verb = action === 'archive' ? '보관' : action === 'restore' ? '복원' : `${formatShort(targetDate!)}에 재계획`;
-    const confirmed = window.confirm(`“${plan.title}” 일정을 ${verb}합니다.${action === 'reschedule' ? ' 원래 일정과 최초 계획 연결은 이력으로 남습니다.' : ''}`);
-    if (!confirmed) return;
-    setSaving(true);
-    try {
-      const response = await fetch('/api/dashboard', {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: plan.id,
-          action,
-          request_id: `language-ui:${crypto.randomUUID()}`,
-          ...(targetDate ? { planDate: targetDate } : {}),
-          ...(action === 'archive' ? { archiveReason: recovery.old.some((item) => item.id === plan.id) ? '21일 초과 보관 추천' : '사용자 보관' } : {}),
-        }),
-      });
-      if (!response.ok) {
-        if (handleUnauthorized(response)) return;
-        setNotice(await responseError(response, `${verb}하지 못했어요.`));
-        return;
-      }
-      setRescheduleTarget(null);
-      setNotice(action === 'archive' ? '일정을 보관했어요. 복구함에서 다시 복원할 수 있어요.' : action === 'restore' ? '보관한 일정을 원래 날짜의 미완료 계획으로 복원했어요.' : `${formatShort(targetDate!)} 일정으로 다시 계획했고 원본 이력을 남겼어요.`);
-      await loadDashboard();
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : `${verb}하지 못했어요.`);
-    } finally { setSaving(false); }
-  }
-
   async function deleteItem(id: string, kind: 'log' | 'plan') {
     if (!requireAdmin()) return;
     const response = await fetch(`/api/dashboard?id=${encodeURIComponent(id)}&kind=${kind}`, { method: 'DELETE' });
     if (response.ok) { setNotice(kind === 'log' ? '기록을 삭제했어요.' : '일정과 연결된 자동 기록을 삭제했어요.'); await loadDashboard(); }
     else if (!handleUnauthorized(response)) setNotice('삭제하지 못했어요. 잠시 후 다시 시도해 주세요.');
-  }
-
-  function recoveryRows(items: StudyPlan[], archiveOnly = false) {
-    return items.map((plan) => <article className="recovery-item" key={plan.id}>
-      <div className="recovery-item-copy">
-        <span>{formatShort(plan.planDate)}에 놓침 · {plan.minutes}분{recommendedPlanIds.has(plan.id) ? ' · 오늘 추천' : archiveOnly ? ' · 보관 추천' : ''}</span>
-        <strong>{plan.title}</strong>
-        {plan.detail && <p>{plan.detail}</p>}
-      </div>
-      <div className="recovery-actions">
-        {!archiveOnly && <><button aria-label={`${plan.title} 오늘로 가져오기`} disabled={saving} onClick={() => void runRecoveryAction(plan, 'reschedule', today)}>오늘로 가져오기</button><button className="subtle" aria-label={`${plan.title} 재계획 날짜 선택`} disabled={saving} onClick={() => { if (requireAdmin()) setRescheduleTarget({ plan, date: today }); }}>날짜 선택</button></>}
-        <button className={archiveOnly ? 'archive-recommended' : 'subtle'} aria-label={`${plan.title} 보관`} disabled={saving} onClick={() => void runRecoveryAction(plan, 'archive')}>보관</button>
-      </div>
-    </article>);
   }
 
   return (
@@ -692,23 +643,7 @@ export default function Home() {
           </div>
         </details>
 
-        {!loading && <details className="accordion-card recovery-card" key={`recovery-${today}`}>
-          <summary className="accordion-summary"><div><p className="mini-label">GENTLE RECOVERY</p><h2>놓친 공부 채우기</h2><p>{recovery.totalCount}개 미완료 · 자동 이월 없이 하나씩 선택</p></div><Marker /></summary>
-          <div className="accordion-body">
-            <div className="recovery-stats" aria-label="미완료 요약">
-              <div><span>전체 미완료</span><strong>{recovery.totalCount}개</strong></div>
-              <div><span>예상 학습</span><strong>{recovery.totalMinutes}분</strong></div>
-              <div><span>가장 오래됨</span><strong>{recovery.oldestPlanDate ? formatShort(recovery.oldestPlanDate) : '없음'}</strong></div>
-            </div>
-            <div className="recovery-guidance"><strong>{recoveryWeekend ? '주말 추천: 최대 2개 또는 60분' : '평일 추천: 최대 1개 또는 30분'}</strong><p>{recovery.recommended.length ? `오늘 추천 ${recovery.recommended.length}개를 표시했어요. 버튼을 눌러야만 일정이 바뀝니다.` : '오늘 추천할 항목이 없어요. 일정은 자동으로 옮기지 않습니다.'}</p></div>
-            {recovery.totalCount === 0 && recovery.archived.length === 0 ? <div className="empty-state"><strong>밀린 학습이 없어요.</strong><span>새 미완료 계획이 생기면 기간별로 나눠 보여드려요.</span></div> : <div className="recovery-groups">
-              {recovery.recent.length > 0 && <section className="recovery-group" aria-labelledby="recovery-recent"><h3 id="recovery-recent">최근 7일 <span>{recovery.recent.length}</span></h3><div className="recovery-list">{recoveryRows(recovery.recent)}</div></section>}
-              {recovery.medium.length > 0 && <section className="recovery-group" aria-labelledby="recovery-medium"><h3 id="recovery-medium">8~21일 <span>{recovery.medium.length}</span></h3><div className="recovery-list">{recoveryRows(recovery.medium)}</div></section>}
-              {recovery.old.length > 0 && <section className="recovery-group recovery-old" aria-labelledby="recovery-old"><h3 id="recovery-old">21일 초과 · 보관 추천 <span>{recovery.old.length}</span></h3><p>오래된 계획은 오늘 추천에 넣지 않습니다. 삭제하지 않고 보관했다가 나중에 복원할 수 있어요.</p><div className="recovery-list">{recoveryRows(recovery.old, true)}</div></section>}
-              {recovery.archived.length > 0 && <section className="recovery-group recovery-archived" aria-labelledby="recovery-archived"><h3 id="recovery-archived">보관한 계획 <span>{recovery.archived.length}</span></h3><div className="recovery-list">{recovery.archived.map((plan) => <article className="recovery-item" key={plan.id}><div className="recovery-item-copy"><span>{formatShort(plan.planDate)} · 보관됨</span><strong>{plan.title}</strong>{plan.archiveReason && <p>{plan.archiveReason}</p>}</div><div className="recovery-actions"><button className="subtle" aria-label={`${plan.title} 복원`} disabled={saving} onClick={() => void runRecoveryAction(plan, 'restore')}>복원</button></div></article>)}</div></section>}
-            </div>}
-          </div>
-        </details>}
+        <StudySchedule date={selectedDate} today={today} revision={scheduleRevision} canEdit={authState === 'authenticated' && !loading} onDate={selectDate} onChanged={() => void loadDashboard(true)} onAdd={() => openEditor('plan')} onComplete={id => { const plan = plans.find(p => p.id === id); if (plan) openCompletion({ type: 'plan', id: plan.id, title: plan.title, part: plan.category, minutes: plan.minutes, date: plan.planDate }); }} onUndo={id => { const plan = plans.find(p => p.id === id); if (plan) void undoPlan(plan); }} onOpen={id => { const plan = plans.find(p => p.id === id); if (plan) openPlanMaterial(plan); }} />
 
         <div className="content-grid">
           <details className="accordion-card today-card" key={`plan-${selectedDate}`}>
@@ -894,7 +829,6 @@ export default function Home() {
         {editor === 'goal' && <form onSubmit={(event) => void submitEditor(event, 'goal')}><div className="form-grid"><label>목표 점수<input name="targetScore" type="number" min="0" max="990" step="5" defaultValue={goal?.targetScore ?? ''} required /></label><label>시험일<input name="examDate" type="date" defaultValue={goal?.examDate ?? ''} required /></label></div><p className="form-separator">최근 실제 성적 추가 (선택)</p><div className="form-grid"><label>점수<input name="latestScore" type="number" min="0" max="990" step="5" /></label><label>응시일<input name="scoreDate" type="date" /></label></div><div className="form-grid"><label>성적 유형<select name="scoreType" defaultValue="official"><option value="official">공식 TOEIC</option><option value="mock">모의고사</option><option value="practice">연습 점수</option></select></label><label>출처<input name="scoreSource" placeholder="예: ETS 성적표" maxLength={80} /></label></div><button className="primary-button modal-submit" disabled={saving}>{saving ? '저장 중...' : '목표·성적 저장'}</button></form>}
       </section></div>}
 
-      {rescheduleTarget && <div className="modal-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) setRescheduleTarget(null); }}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="reschedule-title"><button className="modal-close" onClick={() => setRescheduleTarget(null)} aria-label="닫기">×</button><p className="mini-label">RECOVERY DATE</p><h2 id="reschedule-title">재계획 날짜 선택</h2><p className="modal-copy">“{rescheduleTarget.plan.title}”의 원래 일정과 최초 계획 연결은 이력으로 남습니다.</p><form onSubmit={(event) => { event.preventDefault(); const value = new FormData(event.currentTarget).get('planDate'); if (typeof value === 'string') void runRecoveryAction(rescheduleTarget.plan, 'reschedule', value); }}><label>새 예정 날짜<input name="planDate" type="date" min={today} defaultValue={rescheduleTarget.date} required /></label><button className="primary-button modal-submit" disabled={saving}>{saving ? '재계획 중...' : '이 날짜로 재계획'}</button></form></section></div>}
 
       {completionTarget && <div className="modal-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) setCompletionTarget(null); }}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="completion-title"><button className="modal-close" onClick={() => setCompletionTarget(null)} aria-label="닫기">×</button><p className="mini-label">LEARNING COMPLETE</p><h2 id="completion-title">학습 완료 기록</h2><p className="modal-copy">{completionTarget.title}과 연결된 기록을 자동으로 만듭니다.</p><form onSubmit={(event) => void submitCompletion(event)}><label>학습 시간<input name="minutes" type="number" min="1" max="600" defaultValue={completionTarget.minutes} required /></label><label>점수 또는 성과<input name="score" placeholder="예: 8/10, 완료" maxLength={30} /></label><label>한 줄 메모<textarea name="note" placeholder="다음에 기억할 것" maxLength={300} /></label><label>헷갈린 항목<textarea name="confusedItems" placeholder="다음 복습에 다시 보여줄 내용" maxLength={300} /></label><button className="primary-button modal-submit" disabled={saving}>{saving ? '저장 중...' : '완료하고 기록 만들기'}</button></form></section></div>}
 

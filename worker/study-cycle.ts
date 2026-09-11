@@ -103,6 +103,8 @@ export type PlanCommandInput = {
   score?: string;
   note?: string;
   confusedItems?: string;
+  startMinute?: number | null;
+  scheduleGuard?: boolean;
 };
 
 export type PlanCommandResult = {
@@ -276,7 +278,7 @@ export function summarizeRecovery(
   // Recovery is always an explicit user choice; this list never mutates plans.
   for (const plan of [...medium, ...recent]) {
     if (recommended.length >= maxItems) break;
-    if (recommended.length > 0 && usedMinutes + plan.minutes > maxMinutes) continue;
+    if (usedMinutes + plan.minutes > maxMinutes) continue;
     recommended.push(plan);
     usedMinutes += plan.minutes;
   }
@@ -523,6 +525,20 @@ export async function executePlanCommand(
     );
   }
 
+  if (input.startMinute !== undefined && createdPlan) {
+    if (input.startMinute !== null && (!Number.isInteger(input.startMinute) || input.startMinute < 0 || input.startMinute + plan.minutes > 1440)) {
+      throw new StudyCycleError(400, 'INVALID_TIME', '시작 시각과 분량이 하루를 넘습니다.');
+    }
+    statements.push(database.prepare('INSERT INTO study_plan_slots(plan_id,start_minute) VALUES(?,?)').bind(createdPlan.id, input.startMinute));
+  }
+  if (input.scheduleGuard) {
+    // Check the state observed above inside the same transaction as the transition.
+    statements.unshift(database.prepare('INSERT INTO schedule_receipts(request_id,fingerprint,result_json) VALUES(?,?,?)').bind(
+      input.requestId,
+      JSON.stringify({ action: 'plan', planId: plan.id, expectedStatus: plan.status, expectedUpdatedAt: row.updated_at }),
+      '{}',
+    ));
+  }
   try {
     await database.batch(statements);
   } catch (error) {

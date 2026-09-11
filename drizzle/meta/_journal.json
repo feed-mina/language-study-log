@@ -50,6 +50,13 @@
       "when": 1788775539951,
       "tag": "0006_broken_celestials",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1789106456019,
+      "tag": "0007_study_schedule",
+      "breakpoints": true
     }
   ]
 }

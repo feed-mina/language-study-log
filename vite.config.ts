@@ -24,6 +24,7 @@ export default defineConfig(async () => {
       vinext(),
       cloudflare({
         configPath: './wrangler.jsonc',
+        remoteBindings: process.env.CLOUDFLARE_REMOTE_BINDINGS !== 'false',
         viteEnvironment: { name: 'rsc', childEnvironments: ['ssr'] },
       }),
     ],

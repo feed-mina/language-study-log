@@ -1,4 +1,5 @@
-import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
 
 export const studyPlans = sqliteTable('study_plans', {
   id: text('id').primaryKey(),
@@ -155,6 +156,30 @@ export const telegramConnections = sqliteTable('telegram_connections', {
   updateId: integer('update_id').notNull(),
   connectedAt: text('connected_at').notNull(),
   updatedAt: text('updated_at').notNull(),
+});
+
+// Schedule times are optional and additive; old plans remain time-unspecified.
+export const studyPlanSlots = sqliteTable('study_plan_slots', {
+  planId: text('plan_id').primaryKey().references(() => studyPlans.id, { onDelete: 'cascade' }),
+  startMinute: integer('start_minute'),
+});
+export const studyScheduleSettings = sqliteTable('study_schedule_settings', {
+  id: text('id').primaryKey(), dailyMinutes: integer('daily_minutes').notNull(),
+});
+export const reviewSessions = sqliteTable('review_sessions', {
+  id: text('id').primaryKey(), sessionDate: text('session_date').notNull(), startMinute: integer('start_minute'),
+  minutes: integer('minutes').notNull(), status: text('status').notNull().default('planned'), createdAt: text('created_at').notNull(),
+}, table => [index('idx_review_sessions_date').on(table.sessionDate, table.status)]);
+export const reviewSessionCards = sqliteTable('review_session_cards', {
+  sessionId: text('session_id').notNull().references(() => reviewSessions.id), cardId: text('card_id').notNull().references(() => studyCards.id),
+  reviewedAt: text('reviewed_at'), rating: text('rating'), active: integer('active').notNull().default(1),
+}, table => [uniqueIndex('uq_active_review_card').on(table.cardId).where(sql`${table.active} = 1`), primaryKey({ columns: [table.sessionId, table.cardId] })]);
+export const scheduleReceipts = sqliteTable('schedule_receipts', {
+  requestId: text('request_id').primaryKey(), fingerprint: text('fingerprint').notNull(), resultJson: text('result_json').notNull(),
+});
+export const scheduledReviewReceipts = sqliteTable('scheduled_review_receipts', {
+  requestId: text('request_id').primaryKey(), sessionId: text('session_id').notNull(), cardId: text('card_id').notNull(),
+  rating: text('rating').notNull(), expectedVersion: text('expected_version').notNull(), resultJson: text('result_json').notNull(),
 });
 
 export const studyGoals = sqliteTable('study_goals', {
