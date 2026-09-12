@@ -3,7 +3,7 @@ date: "2026-09-12"
 kind: "toeic"
 source: "chatgpt-automation"
 automation_id: "6a88fd4b063881918ce2807e7e269615"
-generated_at: "2026-09-12T17:58:59+09:00"
+generated_at: "2026-09-12T18:00:00+09:00"
 ---
 # TOEIC 800 목표 Part 5 실전 연습 — 2026-09-12
 
