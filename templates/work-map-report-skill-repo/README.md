@@ -82,10 +82,10 @@ Install for personal cross-project reuse:
 gh skill install OWNER/REPOSITORY work-map-report --scope user
 ```
 
-Install a pinned version:
+Install and pin a version:
 
 ```bash
-gh skill install OWNER/REPOSITORY work-map-report@TAG
+gh skill install OWNER/REPOSITORY work-map-report --pin TAG
 ```
 
 Update later:

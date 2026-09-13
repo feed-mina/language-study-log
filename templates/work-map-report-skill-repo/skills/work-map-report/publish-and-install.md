@@ -57,10 +57,10 @@ gh skill install OWNER/REPOSITORY work-map-report --scope user
 
 Use this when the skill should be recognized across many repositories for the same user environment.
 
-### Install a pinned version
+### Install and pin a version
 
 ```bash
-gh skill install OWNER/REPOSITORY work-map-report@v1.0.0
+gh skill install OWNER/REPOSITORY work-map-report --pin TAG
 ```
 
 Pinning is useful when you want stable behavior across repeated tasks.
@@ -93,4 +93,4 @@ Use that model when the target repository needs local customization or when coll
 
 If this becomes a real shared repository, use tags or releases when the skill behavior changes in a meaningful way.
 
-That makes `gh skill install OWNER/REPOSITORY work-map-report@TAG` easier to use and review.
+That makes pinned installs such as `gh skill install OWNER/REPOSITORY work-map-report --pin TAG` easier to use and review.
