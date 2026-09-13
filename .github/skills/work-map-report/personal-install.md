@@ -7,6 +7,7 @@ Use this repository skill as the source template for other projects.
 Copy this directory to one of the following locations on the machine where you use Copilot:
 
 - `~/.copilot/skills/work-map-report/`
+- `~/.claude/skills/work-map-report/`
 - `~/.agents/skills/work-map-report/`
 
 That makes the skill available across repositories for the same user environment.
