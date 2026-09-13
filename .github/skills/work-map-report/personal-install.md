@@ -16,6 +16,8 @@ That makes the skill available across repositories for the same user environment
 To share the same behavior with collaborators in another repository, copy this directory into:
 
 - `.github/skills/work-map-report/`
+- `.claude/skills/work-map-report/`
+- `.agents/skills/work-map-report/`
 
 inside that repository.
 

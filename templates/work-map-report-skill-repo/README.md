@@ -55,6 +55,7 @@ That makes it a repository-scoped skill for the target project.
 Copy `skills/work-map-report/` into:
 
 - `~/.copilot/skills/work-map-report/`
+- `~/.claude/skills/work-map-report/`
 - `~/.agents/skills/work-map-report/`
 
 That makes the skill available across projects for the same user environment.
