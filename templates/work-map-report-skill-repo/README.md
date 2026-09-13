@@ -85,7 +85,7 @@ gh skill install OWNER/REPOSITORY work-map-report --scope user
 Install a pinned version:
 
 ```bash
-gh skill install OWNER/REPOSITORY work-map-report@v1.0.0
+gh skill install OWNER/REPOSITORY work-map-report@TAG
 ```
 
 Update later:
