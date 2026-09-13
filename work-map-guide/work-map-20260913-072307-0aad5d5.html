@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Work Map Guide · language-study-log · 2026-09-13</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel-2: #172033;
+      --text: #e5e7eb;
+      --muted: #cbd5e1;
+      --line: #334155;
+      --green: #14532d;
+      --green-2: #22c55e;
+      --yellow: #854d0e;
+      --yellow-2: #f59e0b;
+      --gray: #475569;
+      --gray-2: #94a3b8;
+      --red: #7f1d1d;
+      --blue: #1d4ed8;
+      --focus: #f8fafc;
+      --measure: 78ch;
+      color-scheme: dark;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: linear-gradient(180deg, #020617 0%, #0f172a 100%); color: var(--text); line-height: 1.6; }
+    a { color: #93c5fd; }
+    button { font: inherit; }
+    .page { max-width: 1440px; margin: 0 auto; padding: 24px; }
+    .hero, .panel, .detail-panel, .model-card { background: rgba(15, 23, 42, 0.88); border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 20px 40px rgba(2, 6, 23, 0.35); }
+    .hero { padding: 24px; display: grid; gap: 18px; }
+    .eyebrow { color: #93c5fd; font-size: 0.85rem; letter-spacing: 0.08em; text-transform: uppercase; margin: 0; }
+    h1, h2, h3 { margin: 0; line-height: 1.2; }
+    p, li { max-width: var(--measure); color: var(--muted); }
+    .summary-grid, .overview-grid, .verification-grid, .models, .history-grid { display: grid; gap: 16px; }
+    .summary-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    .meta-card, .overview-card, .verification-card { background: rgba(23, 32, 51, 0.95); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+    .meta-card strong, .overview-card strong, .verification-card strong { display: block; margin-bottom: 8px; }
+    .status-row, .chip-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .chip, .legend-chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 10px; font-size: 0.84rem; border: 1px solid transparent; }
+    .chip.label-chip { background: rgba(15, 23, 42, 0.92); border-color: rgba(148, 163, 184, 0.35); }
+    .chip.status-완료 { background: rgba(20, 83, 45, 0.45); border-color: rgba(34, 197, 94, 0.35); }
+    .chip.status-예정 { background: rgba(133, 77, 14, 0.32); border-color: rgba(245, 158, 11, 0.35); }
+    .chip.status-유지 { background: rgba(71, 85, 105, 0.35); border-color: rgba(148, 163, 184, 0.35); }
+    .chip.evidence-확인 { background: rgba(29, 78, 216, 0.25); border-color: rgba(147, 197, 253, 0.45); }
+    .chip.evidence-미확인 { background: rgba(127, 29, 29, 0.25); border-color: rgba(248, 113, 113, 0.4); }
+    .chip.evidence-계획 { background: rgba(71, 85, 105, 0.35); border-color: rgba(148, 163, 184, 0.35); }
+    .followup-toggle { width: fit-content; border: 1px solid var(--line); background: #111827; color: var(--text); border-radius: 999px; padding: 10px 14px; cursor: pointer; }
+    .followup-body[hidden] { display: none; }
+    .section { margin-top: 22px; }
+    .panel { padding: 20px; }
+    .flow-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 14px; }
+    .flow-step { width: 100%; text-align: left; padding: 14px; border-radius: 16px; border: 1px solid var(--line); background: rgba(15, 23, 42, 0.92); color: var(--text); cursor: pointer; min-height: 124px; }
+    .flow-step[aria-current="step"] { outline: 2px solid rgba(34, 197, 94, 0.8); }
+    .flow-step.is-selected { border-color: #93c5fd; box-shadow: 0 0 0 2px rgba(147, 197, 253, 0.25); }
+    .flow-detail { margin-top: 16px; padding: 16px; border-radius: 16px; background: rgba(23, 32, 51, 0.95); border: 1px solid var(--line); }
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .tab { border: 1px solid var(--line); background: #0f172a; color: var(--text); border-radius: 12px; padding: 10px 14px; cursor: pointer; }
+    .tab[aria-selected="true"] { background: #1e293b; border-color: #93c5fd; }
+    [role="tabpanel"][hidden] { display: none; }
+    .map-layout { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(360px, 1.1fr); gap: 18px; align-items: start; margin-top: 16px; }
+    .map-panel, .detail-panel { min-height: 560px; }
+    .map-panel { border: 1px solid var(--line); border-radius: 18px; padding: 16px; background: rgba(9, 14, 26, 0.9); }
+    .lane + .lane { margin-top: 18px; }
+    .map-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
+    .node-button { border-radius: 16px; border: 1px solid var(--line); padding: 12px 14px; background: rgba(15, 23, 42, 0.96); color: var(--text); cursor: pointer; text-align: left; min-width: 180px; max-width: 260px; }
+    .node-button .mini { display: block; font-size: 0.77rem; color: #cbd5e1; margin-top: 4px; }
+    .node-button.group-change { border-color: rgba(34, 197, 94, 0.55); box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.2); }
+    .node-button.group-cause { border-color: rgba(245, 158, 11, 0.5); box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.18); }
+    .node-button.group-front { border-color: rgba(148, 163, 184, 0.5); box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.18); }
+    .node-button.group-test { border-style: dashed; border-color: rgba(147, 197, 253, 0.6); }
+    .node-button[aria-pressed="true"] { transform: translateY(-1px); box-shadow: 0 0 0 2px rgba(147, 197, 253, 0.28); }
+    .arrow { color: #cbd5e1; font-weight: 700; }
+    .detail-panel { padding: 18px; }
+    .detail-header { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+    .detail-body section + section { margin-top: 16px; }
+    .list-block { padding-left: 18px; margin: 10px 0 0; }
+    .code-section { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: rgba(2, 6, 23, 0.85); }
+    .code-section header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); background: rgba(15, 23, 42, 0.95); }
+    pre { margin: 0; padding: 12px; overflow: auto; color: #e2e8f0; font-size: 0.88rem; line-height: 1.5; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .related-button { border: 1px solid var(--line); background: #111827; color: var(--text); border-radius: 10px; padding: 8px 12px; cursor: pointer; }
+    .models { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); margin-top: 16px; }
+    .model-card { padding: 18px; }
+    .model-box { margin-top: 12px; border: 1px solid var(--line); border-radius: 16px; padding: 16px; background: rgba(23, 32, 51, 0.95); }
+    .model-pill { display: inline-block; border-radius: 999px; padding: 4px 10px; background: rgba(71, 85, 105, 0.35); border: 1px solid rgba(148, 163, 184, 0.35); font-size: 0.82rem; }
+    .verification-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-top: 16px; }
+    .group-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 16px; }
+    details { border: 1px solid var(--line); border-radius: 14px; background: rgba(15, 23, 42, 0.92); }
+    summary { cursor: pointer; padding: 12px 14px; font-weight: 600; }
+    details > div { padding: 0 14px 14px; }
+    .history-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); margin-top: 16px; }
+    @media (max-width: 960px) {
+      .page { padding: 16px; }
+      .map-layout { grid-template-columns: 1fr; }
+      .map-panel, .detail-panel { min-height: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Work Map Guide · branch analysis</p>
+        <h1>language-study-log 현재 브랜치 흐름도</h1>
+      </div>
+      <p id="headline"></p>
+      <div class="summary-grid">
+        <div class="meta-card"><strong>저장소</strong><p id="meta-repo"></p></div>
+        <div class="meta-card"><strong>브랜치 / HEAD</strong><p id="meta-branch"></p></div>
+        <div class="meta-card"><strong>작업트리</strong><p id="meta-worktree"></p></div>
+        <div class="meta-card"><strong>보고서 경로</strong><p id="meta-path"></p></div>
+      </div>
+      <div class="overview-grid">
+        <div class="overview-card"><strong>핵심 파일과 변경 방향</strong><p id="overview-direction"></p></div>
+        <div class="overview-card"><strong>다음 행동</strong><p id="overview-next"></p><button class="followup-toggle" id="followup-toggle" type="button" aria-expanded="false" aria-controls="followup-body">5단계 할 일 보기</button><div class="followup-body" id="followup-body" hidden><ul class="list-block" id="followup-list"></ul></div></div>
+      </div>
+    </header>
+
+    <section class="section panel" aria-labelledby="flow-title">
+      <div class="detail-header">
+        <div>
+          <p class="eyebrow">진행상황</p>
+          <h2 id="flow-title">상단 진행 플로우차트</h2>
+        </div>
+        <div class="chip-row">
+          <span class="legend-chip" style="background: rgba(245,158,11,.22); border:1px solid rgba(245,158,11,.35);">원인 · 노랑</span>
+          <span class="legend-chip" style="background: rgba(34,197,94,.22); border:1px solid rgba(34,197,94,.35);">변경 · 초록</span>
+          <span class="legend-chip" style="background: rgba(148,163,184,.22); border:1px solid rgba(148,163,184,.35);">프런트 · 회색</span>
+          <span class="legend-chip" style="border:1px dashed rgba(147,197,253,.6);">테스트 · 점선</span>
+        </div>
+      </div>
+      <div class="flow-grid" id="flow-grid"></div>
+      <div class="flow-detail" id="flow-detail" aria-live="polite"></div>
+    </section>
+
+    <section class="section panel" aria-labelledby="map-title">
+      <p class="eyebrow">코드·작업 지도</p>
+      <h2 id="map-title">왼쪽 다이어그램 / 오른쪽 코드·작업 상세</h2>
+      <div class="tabs" role="tablist" aria-label="보고서 탭">
+        <button class="tab" id="tab-map" role="tab" aria-selected="true" aria-controls="panel-map" tabindex="0" type="button">코드·작업 지도</button>
+        <button class="tab" id="tab-screen" role="tab" aria-selected="false" aria-controls="panel-screen" tabindex="-1" type="button">화면 비교</button>
+        <button class="tab" id="tab-verify" role="tab" aria-selected="false" aria-controls="panel-verify" tabindex="-1" type="button">검증·배포</button>
+        <button class="tab" id="tab-history" role="tab" aria-selected="false" aria-controls="panel-history" tabindex="-1" type="button">근거·이력</button>
+      </div>
+
+      <div id="panel-map" role="tabpanel" aria-labelledby="tab-map">
+        <div class="map-layout">
+          <div class="map-panel" id="map-panel"></div>
+          <article class="detail-panel" id="detail-panel" aria-labelledby="detail-title">
+            <div class="detail-header">
+              <div>
+                <p class="eyebrow">선택 상세</p>
+                <h3 id="detail-title" tabindex="-1">로딩 중</h3>
+              </div>
+              <button class="related-button" id="related-button" type="button">관련 코드 위치 보기</button>
+            </div>
+            <div class="detail-body" id="detail-body"></div>
+          </article>
+        </div>
+      </div>
+
+      <div id="panel-screen" role="tabpanel" aria-labelledby="tab-screen" hidden>
+        <div class="models" id="screen-models"></div>
+      </div>
+
+      <div id="panel-verify" role="tabpanel" aria-labelledby="tab-verify" hidden>
+        <div class="verification-grid" id="verification-grid"></div>
+        <div class="group-columns">
+          <details open><summary>다음 개발</summary><div><ul class="list-block" id="next-dev-list"></ul></div></details>
+          <details open><summary>현재 사용 안내</summary><div><ul class="list-block" id="current-guidance-list"></ul></div></details>
+          <details open><summary>검증 범위</summary><div><ul class="list-block" id="verification-scope-list"></ul></div></details>
+        </div>
+      </div>
+
+      <div id="panel-history" role="tabpanel" aria-labelledby="tab-history" hidden>
+        <div class="history-grid">
+          <div class="meta-card"><strong>최근 커밋</strong><ul class="list-block" id="commit-list"></ul></div>
+          <div class="meta-card"><strong>워크플로 이력</strong><ul class="list-block" id="workflow-list"></ul></div>
+          <div class="meta-card"><strong>확인 명령</strong><ul class="list-block" id="command-list"></ul></div>
+          <div class="meta-card"><strong>근거 출처</strong><ul class="list-block" id="citation-list"></ul></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script id="report-data" type="application/json">{"meta": {"repo": "feed-mina/language-study-log", "branch": "copilot/work-map-guide", "head": "0aad5d54c91b70fb2dc281298eb8a0408b43fcf5", "base": "origin/main", "worktree": "clean", "generatedAt": "2026-09-13T07:23:07Z", "reportPath": "work-map-guide/work-map-20260913-072307-0aad5d5.html", "diffSummary": "현재 브랜치 HEAD는 origin/main과 동일하며 작업트리 변경은 없습니다. 오늘 확인한 실질 변경 이력은 2026-09-13 영어·일본어 학습 로그 추가 2건입니다."}, "overview": {"headline": "현재 브랜치는 main과 같은 HEAD를 가리키고, 2026-09-13 영어·일본어 학습 로그 반영 상태까지 포함합니다.", "direction": "확인된 변경 축은 study-logs 추가 → GitHub Actions 검증 → D1 업서트 → /api/materials 소비 경로입니다. 배포 워크플로는 study-logs 전용 푸시에서는 의도적으로 실행되지 않습니다.", "nextAction": "실사용 확인이 필요하면 2026-09-13 날짜로 대시보드의 예약 학습 자료 섹션에서 영어·일본어 카드 노출을 확인합니다.", "followUp": ["사이트에서 2026-09-13를 선택해 영어·일본어 카드가 모두 보이는지 확인", "TOEIC 미생성은 일정 누락이 아니라 일요일 미운영 규칙과 일치하는지 유지 확인", "다음 로그 동기화 실패 시 sync-study-logs 워크플로의 base SHA, 경로 제한, owner 검증 순서부터 재확인"]}, "stages": [{"id": "stage-branch", "title": "브랜치 기준점 확인", "status": "완료", "evidenceState": "확인", "current": false, "selected": false, "summary": "copilot/work-map-guide 브랜치는 origin/main과 같은 HEAD 0aad5d5를 가리키며 git status 기준 작업트리는 비어 있습니다.", "details": ["git merge-base origin/main HEAD 결과가 HEAD 자체로 확인되었습니다.", "origin/main...HEAD diff 결과는 비어 있어 브랜치 전용 코드 차이는 없습니다."], "checkedAt": "2026-09-13 07:23 UTC"}, {"id": "stage-logs", "title": "오늘 학습 로그 반영", "status": "완료", "evidenceState": "확인", "current": false, "selected": false, "summary": "최근 두 커밋이 2026-09-13 english.md와 japanese.md를 각각 추가했습니다.", "details": ["6a684bd: study-logs/2026/09/13/english.md 93줄 추가", "0aad5d5: study-logs/2026/09/13/japanese.md 110줄 추가", "README 일정상 일요일에는 영어 06:30, 일본어 08:00만 예정되고 TOEIC은 월–토만 생성됩니다."], "checkedAt": "2026-09-13 07:23 UTC"}, {"id": "stage-sync", "title": "자동 검증·D1 동기화", "status": "완료", "evidenceState": "확인", "current": true, "selected": true, "summary": "Sync ChatGPT study logs 워크플로 run #55와 #54가 모두 성공했고, Japanese run 로그에서 검증 1건·업서트 2쿼리·8행 쓰기가 확인됐습니다.", "details": ["run #55 docs(study-log): sync japanese 2026-09-13 → success", "run #54 docs(study-log): sync english 2026-09-13 → success", "job validate-and-sync에서 Validate study log format, Prepare D1 SQL, Upsert study logs into D1가 모두 success입니다."], "checkedAt": "2026-09-13 07:23 UTC / GitHub Actions 기록"}, {"id": "stage-ui", "title": "사이트 노출 확인", "status": "예정", "evidenceState": "미확인", "current": false, "selected": false, "summary": "코드상 /api/materials와 app/page.tsx 연결은 확인했지만 실제 2026-09-13 화면 캡처나 응답 실측은 이번 분석 범위에 포함하지 않았습니다.", "details": ["worker/api.ts가 날짜별 materials JSON을 반환합니다.", "app/page.tsx가 dashboard와 materials를 함께 불러와 예약 학습 자료 아코디언에 렌더링합니다."], "checkedAt": "코드 근거만 확인"}, {"id": "stage-next", "title": "사용자 확인·후속 조치", "status": "예정", "evidenceState": "계획", "current": false, "selected": false, "summary": "필요 시 실제 워커 응답과 브라우저 노출을 같은 날짜 기준으로 맞춰 확인하면 됩니다.", "details": ["2026-09-13 날짜 선택 후 영어·일본어 카드 수와 제목을 현재 보고서와 대조", "실패 시 sync-study-logs run URL과 api/materials 응답 범위를 함께 비교"], "checkedAt": "미실행"}], "nodes": [{"id": "f-japanese", "kind": "file", "group": "change", "status": "완료", "evidenceState": "확인", "title": "study-logs/2026/09/13/japanese.md", "label": "변경 파일", "path": "study-logs/2026/09/13/japanese.md", "summary": "HEAD 커밋이 JLPT N5 이동 수단/동행 문제 5개와 구조화 JSON을 추가했습니다.", "done": ["프런트매터와 H1, 대표 말하기 문장, 5개 문항이 모두 채워져 있습니다.", "구조화 데이터 JSON이 파일 마지막 블록으로 배치되어 있습니다."], "keep": ["다른 경로 변경 없이 study-logs 파일 1건만 포함된 커밋 형식을 유지합니다."], "next": ["실사용 확인이 필요할 때 /api/materials?date=2026-09-13에서 노출 여부를 확인합니다."], "codeSections": [{"title": "프런트매터와 제목", "path": "study-logs/2026/09/13/japanese.md", "lines": "1-12", "changeType": "추가", "code": "1. ---\n2. date: \"2026-09-13\"\n3. kind: \"japanese\"\n4. source: \"chatgpt-automation\"\n5. automation_id: \"6a88fd260e24819181e888d1c2d60a44\"\n6. generated_at: \"2026-09-13T08:25:19+09:00\"\n7. ---\n8. # JLPT N5 이동 수단 で와 동행 と — 2026-09-13\n9. \n10. 교통수단 뒤의 で로 이동 방법을, 사람 뒤의 と로 함께 가는 상대를 나타내는 방법을 익히고 목적지의 へ와 행동 목적의 に를 함께 복습하는 초급 일본어 문제 5개입니다.\n11. \n12. 대표 말하기 문장: **毎朝電車で会社へ行きます。**  "}, {"title": "구조화 데이터 시작부", "path": "study-logs/2026/09/13/japanese.md", "lines": "74-110", "changeType": "추가", "code": "74. ## 구조화 데이터\n75. \n76. ```json\n77. {\n78.   \"title\": \"JLPT N5 이동 수단 で와 동행 と — 2026-09-13\",\n79.   \"summary\": \"교통수단 뒤의 で로 이동 방법을, 사람 뒤의 と로 함께 가는 상대를 나타내는 방법을 익히고 목적지의 へ와 행동 목적의 に를 함께 복습하는 초급 일본어 문제 5개입니다.\",\n80.   \"speakingSentence\": \"毎朝電車で会社へ行きます。\",\n81.   \"speakingMeaning\": \"매일 아침 전철로 회사에 갑니다.\",\n82.   \"items\": [\n83.     {\n84.       \"prompt\": \"“저는 전철로 회사에 갑니다.”에 알맞은 문장을 고르세요.\\nA. 私は電車で会社へ行きます。（わたしは でんしゃで かいしゃへ いきます。）\\nB. 私は電車と会社へ行きます。（わたしは でんしゃと かいしゃへ いきます。）\\nC. 私は電車に会社で行きます。（わたしは でんしゃに かいしゃで いきます。）\\nD. 私は電車を会社と行きます。（わたしは でんしゃを かいしゃと いきます。）\",\n85.       \"answer\": \"A. 私は電車で会社へ行きます。 — 저는 전철로 회사에 갑니다.\",\n86.       \"explanation\": \"교통수단 電車 뒤에는 이동 방법을 나타내는 조사 で를, 목적지 会社 뒤에는 방향을 나타내는 へ를 사용합니다. 電車는 でんしゃ, 会社는 かいしゃ로 읽습니다. へ는 조사로 쓸 때 '헤'가 아니라 '에'로 발음합니다.\"\n87.     },\n88.     {\n89.       \"prompt\": \"“친구와 영화관에 갑니다.”에 알맞은 문장을 고르세요.\\nA. 友達で映画館へ行きます。（ともだちで えいがかんへ いきます。）\\nB. 友達と映画館へ行きます。（ともだちと えいがかんへ いきます。）\\nC. 友達に映画館で行きます。（ともだちに えいがかんで いきます。）\\nD. 友達を映画館と行きます。（ともだちを えいがかんと いきます。）\",\n90.       \"answer\": \"B. 友達と映画館へ行きます。 — 친구와 영화관에 갑니다.\",\n91.       \"explanation\": \"함께 행동하는 사람 뒤에는 조사 と를 사용해 '친구와 함께'라는 뜻을 만듭니다. 목적지 映画館에는 へ를 붙입니다. 友達는 ともだち, 映画館은 えいがかん으로 읽으며, えい는 길게 '에이'에 가깝게 발음합니다.\"\n92.     },\n93.     {\n94.       \"prompt\": \"“어제 버스로 학교에 왔습니다.”에 알맞은 문장을 고르세요.\\nA. 昨日バスと学校へ来ました。（きのう バスと がっこうへ きました。）\\nB. 昨日バスに学校で来ました。（きのう バスに がっこうで きました。）\\nC. 昨日バスで学校へ来ました。（きのう バスで がっこうへ きました。）\\nD. 昨日バスを学校と来ました。（きのう バスを がっこうと きました。）\",\n95.       \"answer\": \"C. 昨日バスで学校へ来ました。 — 어제 버스로 학교에 왔습니다.\",\n96.       \"explanation\": \"버스라는 이동 수단 뒤에는 で를 사용하고 학교라는 목적지 뒤에는 へ를 사용합니다. 来ました는 来ます의 과거형으로 '왔습니다'라는 뜻입니다. 昨日は きのう, 来ました는 きました로 읽으며 き에 힘을 과하게 주지 않습니다.\"\n97.     },\n98.     {\n99.       \"prompt\": \"“어머니와 자동차로 쇼핑하러 갑니다.”에 알맞은 문장을 고르세요.\\nA. 母で車と買い物へ行きます。（ははで くるまと かいものへ いきます。）\\nB. 母に車を買い物で行きます。（ははに くるまを かいもので いきます。）\\nC. 母を車に買い物と行きます。（ははを くるまに かいものと いきます。）\\nD. 母と車で買い物に行きます。（ははと くるまで かいものに いきます。）\",\n100.       \"answer\": \"D. 母と車で買い物に行きます。 — 어머니와 자동차로 쇼핑하러 갑니다.\",\n101.       \"explanation\": \"동행 상대 母에는 と, 이동 수단 車에는 で를 사용합니다. 買い物に行きます에서 に는 이동의 목적을 나타내어 '쇼핑하러 갑니다'가 됩니다. 母는 자기 어머니를 말할 때 はは, 車는 くるま, 買い物은 かいもの로 읽습니다.\"\n102.     },\n103.     {\n104.       \"prompt\": \"대화의 빈칸에 알맞은 말을 고르세요.\\nA: 何で駅へ行きますか。（なにで えきへ いきますか。）\\nB: ______\\nA. 自転車と行きます。（じてんしゃと いきます。）\\nB. 自転車へ行きます。（じてんしゃへ いきます。）\\nC. 自転車で行きます。（じてんしゃで いきます。）\\nD. 自転車を行きます。（じてんしゃを いきます。）\",\n105.       \"answer\": \"C. 自転車で行きます。 — 자전거로 갑니다.\",\n106.       \"explanation\": \"何で를 なにで로 읽으면 '무엇을 이용해서'라는 이동 수단 질문입니다. 대답에서는 수단 自転車 뒤에 で를 붙입니다. 自転車는 じてんしゃ로 읽고, しゃ는 '샤'처럼 한 박자로 발음합니다. 대화에서는 이미 목적지가 제시되어 반복하지 않아도 됩니다.\"\n107.     }\n108.   ]\n109. }\n110. ```"}]}, {"id": "f-english", "kind": "file", "group": "change", "status": "완료", "evidenceState": "확인", "title": "study-logs/2026/09/13/english.md", "label": "변경 파일", "path": "study-logs/2026/09/13/english.md", "summary": "직전 커밋이 실무 영어 문장 5개와 구조화 JSON payload를 추가했습니다.", "done": ["source=chatgpt-automation과 automation_id, generated_at가 함께 기록되어 있습니다.", "대표 말하기 문장과 5개 학습 항목이 JSON과 본문에 대응됩니다."], "keep": ["오늘 영어 로그는 별도 파일 추가이며 다른 코드 경로를 직접 변경하지 않습니다."], "next": ["동일 날짜 사용자 화면에서 일본어 카드와 함께 노출되는지 확인하면 충분합니다."], "codeSections": [{"title": "프런트매터와 요약", "path": "study-logs/2026/09/13/english.md", "lines": "1-12", "changeType": "추가", "code": "1. ---\n2. date: \"2026-09-13\"\n3. kind: \"english\"\n4. source: \"chatgpt-automation\"\n5. automation_id: \"6a88f71bcde08191a07c7b9ec1daab1f\"\n6. generated_at: \"2026-09-13T07:16:24+09:00\"\n7. ---\n8. # 실무 영어 5문장 — 데이터 점검과 단계적 대응\n9. \n10. 데이터 불일치 조사, 외부 의존성을 고려한 일정 산정, 오류 에스컬레이션, 피드백 구체화, 핵심 기능 우선 출시 상황에서 사용할 수 있는 실무 영어 표현 5개입니다.\n11. \n12. 대표 말하기 문장: **The numbers don't match the source data, so I'm checking the transformation logic.**  "}, {"title": "구조화 데이터 시작부", "path": "study-logs/2026/09/13/english.md", "lines": "57-93", "changeType": "추가", "code": "57. ## 구조화 데이터\n58. \n59. ```json\n60. {\n61.   \"title\": \"실무 영어 5문장 — 데이터 점검과 단계적 대응\",\n62.   \"summary\": \"데이터 불일치 조사, 외부 의존성을 고려한 일정 산정, 오류 에스컬레이션, 피드백 구체화, 핵심 기능 우선 출시 상황에서 사용할 수 있는 실무 영어 표현 5개입니다.\",\n63.   \"speakingSentence\": \"The numbers don't match the source data, so I'm checking the transformation logic.\",\n64.   \"speakingMeaning\": \"수치가 원본 데이터와 일치하지 않아서 변환 로직을 확인하고 있습니다.\",\n65.   \"items\": [\n66.     {\n67.       \"prompt\": \"The numbers don't match the source data, so I'm checking the transformation logic.\",\n68.       \"answer\": \"수치가 원본 데이터와 일치하지 않아서 변환 로직을 확인하고 있습니다.\",\n69.       \"explanation\": \"문법: don't match는 '일치하지 않는다', be checking은 현재 진행 중인 조사를 나타냅니다. so는 원인에 따른 결과를 연결합니다. 발음: numbers는 '넘버즈', transformation은 '트랜스퍼메이션'에 가깝고, source data는 두 단어를 자연스럽게 이어 말합니다. 맥락: 집계값이나 화면의 수치가 원본과 다를 때 현재 확인 중인 지점을 설명하는 표현입니다.\"\n70.     },\n71.     {\n72.       \"prompt\": \"Before we commit to a deadline, we need to account for the external dependency.\",\n73.       \"answer\": \"마감 일정을 확정하기 전에 외부 의존 요소를 고려해야 합니다.\",\n74.       \"explanation\": \"문법: commit to는 '~을 확정적으로 약속하다', account for는 '~을 고려하다'라는 구동사입니다. Before가 이끄는 절에서는 미래 의미라도 현재형 commit을 사용합니다. 발음: deadline은 '데드라인', dependency는 두 번째 음절에 힘을 주어 '디펜던시'에 가깝게 말합니다. 맥락: 다른 작업이나 승인에 일정이 좌우될 때 성급한 완료 약속을 피하는 표현입니다.\"\n75.     },\n76.     {\n77.       \"prompt\": \"If the issue persists after the restart, I'll escalate it and include the relevant logs.\",\n78.       \"answer\": \"재시작 후에도 문제가 계속되면 상위 담당자에게 전달하고 관련 로그를 첨부하겠습니다.\",\n79.       \"explanation\": \"문법: 미래 조건을 나타내는 if절에는 현재형 persists를 쓰고, 결과절에는 will을 사용합니다. escalate는 해결 권한이 있는 상위 단계로 문제를 전달한다는 뜻입니다. 발음: persists는 '퍼시스츠', relevant는 첫 음절에 힘을 주어 '렐러번트'에 가깝습니다. 맥락: 기본 조치 후에도 오류가 남을 경우 다음 대응 계획을 알릴 때 사용합니다.\"\n80.     },\n81.     {\n82.       \"prompt\": \"Could you point out which part of the proposal needs more detail?\",\n83.       \"answer\": \"제안서의 어느 부분에 더 자세한 설명이 필요한지 짚어 주실 수 있나요?\",\n84.       \"explanation\": \"문법: Could you는 정중한 요청이고, which part of the proposal needs more detail은 point out의 내용을 나타내는 간접의문문이라 평서문 어순을 사용합니다. 발음: point out은 연결해 '포인타웃', proposal은 두 번째 음절에 힘을 주어 '프러포절'에 가깝습니다. 맥락: 막연한 수정 요청을 받았을 때 필요한 보완 지점을 구체적으로 확인하는 표현입니다.\"\n85.     },\n86.     {\n87.       \"prompt\": \"We can release the core functionality now and address the refinements separately.\",\n88.       \"answer\": \"핵심 기능은 지금 출시하고 세부 개선 사항은 별도로 처리할 수 있습니다.\",\n89.       \"explanation\": \"문법: can 뒤에는 동사원형 release와 address가 and로 병렬 연결됩니다. 여기서 address는 문제나 과제를 '다루다'라는 뜻입니다. 발음: functionality는 '펑크셔낼러티', refinements는 '리파인먼츠'에 가깝습니다. 맥락: 필수 기능을 먼저 제공하고 완성도를 높이는 작업은 후속 단계로 분리하자고 제안할 때 사용합니다.\"\n90.     }\n91.   ]\n92. }\n93. ```"}]}, {"id": "f-workflow", "kind": "file", "group": "cause", "status": "유지", "evidenceState": "확인", "title": ".github/workflows/sync-study-logs.yml", "label": "자동 검증", "path": ".github/workflows/sync-study-logs.yml", "summary": "study-logs 전용 푸시만 받아 경로 제한, 형식 검증, D1 업서트를 순서대로 수행합니다.", "done": ["main push와 PR에서 study-logs/**만 추적합니다.", "유효하지 않은 추가 경로가 섞이면 즉시 실패하도록 방어합니다."], "keep": ["학습 로그 변경은 배포 워크플로가 아니라 이 동기화 워크플로로 흘러갑니다."], "next": ["다음 실패 때는 changed/base SHA 계산과 selected 파일 목록을 먼저 점검합니다."], "codeSections": [{"title": "트리거 범위", "path": ".github/workflows/sync-study-logs.yml", "lines": "1-12", "changeType": "확인", "code": "1. name: Sync ChatGPT study logs\n2. \n3. on:\n4.   push:\n5.     branches: [main]\n6.     paths:\n7.       - study-logs/**\n8.   pull_request:\n9.     branches: [main]\n10.     paths:\n11.       - study-logs/**\n12.   workflow_dispatch:"}, {"title": "경로 제한과 선택 파일 수집", "path": ".github/workflows/sync-study-logs.yml", "lines": "35-71", "changeType": "확인", "code": "35.         run: |\n36.           set -euo pipefail\n37.           changed=\"$RUNNER_TEMP/changed-files\"\n38.           selected=\"$RUNNER_TEMP/study-log-files\"\n39.           : > \"$changed\"\n40.           : > \"$selected\"\n41. \n42.           if [[ \"$EVENT_NAME\" == \"workflow_dispatch\" ]]; then\n43.             git ls-files -z -- 'study-logs/*/*/*/*.md' > \"$selected\"\n44.           else\n45.             base=\"$PUSH_BEFORE\"\n46.             if [[ \"$EVENT_NAME\" == \"pull_request\" ]]; then\n47.               base=\"$PR_BASE\"\n48.             fi\n49.             if [[ -z \"$base\" || \"$base\" =~ ^0+$ ]]; then\n50.               base=\"$(git hash-object -t tree -w /dev/null)\"\n51.             fi\n52.             echo \"base_sha=$base\" >> \"$GITHUB_OUTPUT\"\n53.             git diff --name-only -z \"$base\" \"$HEAD_SHA\" > \"$changed\"\n54. \n55.             invalid=0\n56.             while IFS= read -r -d '' path; do\n57.               case \"$path\" in\n58.                 study-logs/[0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9]/english.md|\\\n59.                 study-logs/[0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9]/japanese.md|\\\n60.                 study-logs/[0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9]/toeic.md) ;;\n61.                 *)\n62.                   echo \"::error::Study-log commits must not include other paths: $path\"\n63.                   invalid=1\n64.                   ;;\n65.               esac\n66.             done \u003c \"$changed\"\n67.             if [[ \"$invalid\" -ne 0 ]]; then\n68.               exit 1\n69.             fi\n70. \n71.             git diff --name-only --diff-filter=AMR -z \"$base\" \"$HEAD_SHA\" -- 'study-logs/*/*/*/*.md' > \"$selected\""}, {"title": "형식 검증과 D1 업서트", "path": ".github/workflows/sync-study-logs.yml", "lines": "80-111", "changeType": "확인", "code": "80.       - name: Validate study log format\n81.         if: steps.logs.outputs.has_logs == 'true'\n82.         env:\n83.           BASE_SHA: ${{ steps.logs.outputs.base_sha }}\n84.         run: |\n85.           mapfile -d '' files \u003c \"$RUNNER_TEMP/study-log-files\"\n86.           node --experimental-strip-types scripts/study-log-to-sql.ts --check \"${files[@]}\"\n87.           if [[ -n \"$BASE_SHA\" ]]; then\n88.             node --experimental-strip-types scripts/study-log-to-sql.ts --check-owner \"$BASE_SHA\" \"${files[@]}\"\n89.           fi\n90.       - name: Install sync dependencies\n91.         if: steps.logs.outputs.has_logs == 'true' && github.event_name != 'pull_request'\n92.         run: npm ci\n93.       - name: Prepare D1 SQL\n94.         if: steps.logs.outputs.has_logs == 'true' && github.event_name != 'pull_request'\n95.         run: |\n96.           mapfile -d '' files \u003c \"$RUNNER_TEMP/study-log-files\"\n97.           node --experimental-strip-types scripts/study-log-to-sql.ts \"$RUNNER_TEMP/study-log-sync.sql\" \"${files[@]}\"\n98.       - name: Upsert study logs into D1\n99.         if: steps.logs.outputs.has_logs == 'true' && github.event_name != 'pull_request'\n100.         env:\n101.           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}\n102.           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}\n103.         run: |\n104.           set -euo pipefail\n105.           if [[ -z \"$CLOUDFLARE_ACCOUNT_ID\" || -z \"$CLOUDFLARE_API_TOKEN\" ]]; then\n106.             echo \"::error::Cloudflare Actions secrets are required for D1 sync.\"\n107.             exit 1\n108.           fi\n109.           sql_file=\"$RUNNER_TEMP/study-log-sync.sql\"\n110.           trap 'rm -f \"$sql_file\"' EXIT\n111.           node node_modules/wrangler/bin/wrangler.js d1 execute language-study-log-db --remote --config wrangler.jsonc --file \"$sql_file\" --yes"}]}, {"id": "f-parser", "kind": "file", "group": "cause", "status": "유지", "evidenceState": "확인", "title": "scripts/study-log-to-sql.ts", "label": "검증·SQL 변환", "path": "scripts/study-log-to-sql.ts", "summary": "파일 경로/프런트매터/JSON 계약을 검증하고 날짜·종류 기준 idempotent upsert SQL을 만듭니다.", "done": ["경로 형식, 날짜, 구조화 데이터 위치, H1/JSON title 일치를 강제합니다.", "동일 date:kind 슬롯 중복과 다른 automation_id 덮어쓰기를 방지합니다."], "keep": ["민감한 토큰 패턴과 과대 파일도 파싱 단계에서 거부합니다."], "next": ["계약이 바뀌면 parseStudyLog와 buildStudyLogSql을 함께 조정해야 합니다."], "codeSections": [{"title": "parseStudyLog 계약 검사", "path": "scripts/study-log-to-sql.ts", "lines": "142-181", "changeType": "확인", "code": "142. export function parseStudyLog(relativePath: string, rawText: string): ParsedStudyLog {\n143.   const path = relativePath.replaceAll('\\\\', '/').replace(/^\\.\\//, '');\n144.   const bytes = Buffer.byteLength(rawText, 'utf8');\n145.   if (bytes === 0 || bytes > MAX_FILE_BYTES) fail(path, `file must be between 1 and ${MAX_FILE_BYTES} bytes`);\n146.   if (SENSITIVE_PATTERNS.some((pattern) => pattern.test(rawText))) {\n147.     fail(path, 'file appears to contain a token, private key, or authorization secret');\n148.   }\n149. \n150.   const pathMatch = path.match(/^study-logs\\/(\\d{4})\\/(\\d{2})\\/(\\d{2})\\/(english|japanese|toeic)\\.md$/);\n151.   if (!pathMatch) fail(path, 'path must be study-logs/YYYY/MM/DD/{english|japanese|toeic}.md');\n152.   const pathDate = `${pathMatch[1]}-${pathMatch[2]}-${pathMatch[3]}`;\n153.   const pathKind = pathMatch[4] as ContentKind;\n154.   if (!isDate(pathDate)) fail(path, 'path contains an invalid calendar date');\n155. \n156.   const normalized = rawText.replaceAll('\\r\\n', '\\n');\n157.   const { frontmatter, body } = parseFrontmatter(path, normalized);\n158.   if (frontmatter.date !== pathDate || frontmatter.kind !== pathKind) {\n159.     fail(path, 'frontmatter date and kind must match the file path');\n160.   }\n161.   const h1 = body.match(/^#\\s+(.+)$/m)?.[1].trim();\n162.   if (!h1) fail(path, 'Markdown body must contain an H1 title');\n163. \n164.   const jsonBlocks = [...body.matchAll(/```json[ \\t]*\\n([\\s\\S]*?)\\n```/gi)];\n165.   if (jsonBlocks.length !== 1) fail(path, 'Markdown body must contain exactly one fenced json block');\n166.   if (!/##\\s+구조화 데이터\\s*\\n\\s*```json/i.test(body)) {\n167.     fail(path, 'the json block must be under a 구조화 데이터 heading');\n168.   }\n169.   const trailing = body.slice((jsonBlocks[0].index ?? 0) + jsonBlocks[0][0].length).trim();\n170.   if (trailing) fail(path, 'the structured data block must be the final content in the file');\n171. \n172.   let parsed: unknown;\n173.   try {\n174.     parsed = JSON.parse(jsonBlocks[0][1]) as unknown;\n175.   } catch {\n176.     fail(path, 'structured data block is not valid JSON');\n177.   }\n178. \n179.   const payload = validatePayload(path, frontmatter.kind, parsed);\n180.   if (h1 !== payload.title) fail(path, 'Markdown H1 must match the structured title');\n181.   return { ...frontmatter, path, payload };"}, {"title": "study_content / study_plans upsert", "path": "scripts/study-log-to-sql.ts", "lines": "189-260", "changeType": "확인", "code": "189. export function buildStudyLogSql(logs: ParsedStudyLog[]): string {\n190.   if (logs.length === 0) throw new Error('At least one study log is required');\n191.   const uniquePaths = new Set\u003cstring>();\n192.   const uniqueSlots = new Set\u003cstring>();\n193.   const statements: string[] = ['-- Generated by scripts/study-log-to-sql.ts. Do not commit this file.'];\n194. \n195.   for (const log of logs) {\n196.     if (uniquePaths.has(log.path)) throw new Error(`Duplicate study log path: ${log.path}`);\n197.     const slot = `${log.date}:${log.kind}`;\n198.     if (uniqueSlots.has(slot)) throw new Error(`Duplicate study log date and kind: ${slot}`);\n199.     uniquePaths.add(log.path);\n200.     uniqueSlots.add(slot);\n201. \n202.     const payloadJson = JSON.stringify(log.payload);\n203.     const timestamp = new Date(log.generatedAt).toISOString();\n204.     const contentId = `content:chatgpt:${log.date}:${log.kind}`;\n205.     const category = log.kind.toUpperCase();\n206.     const minutes = log.kind === 'toeic' ? 45 : 20;\n207.     const model = `chatgpt-automation/${log.automationId}`;\n208.     const detail = log.payload.summary.slice(0, 120);\n209. \n210.     const contentValues = [\n211.       contentId,\n212.       log.date,\n213.       log.kind,\n214.       log.payload.title,\n215.       log.payload.summary,\n216.       payloadJson,\n217.       model,\n218.       timestamp,\n219.       timestamp,\n220.     ].map(sqlLiteral);\n221.     statements.push(`INSERT INTO study_content\n222.   (id, content_date, kind, title, summary, body_json, model, status, created_at, updated_at)\n223. VALUES (${contentValues.slice(0, 7).join(', ')}, 'ready', ${contentValues.slice(7).join(', ')})\n224. ON CONFLICT(content_date, kind) DO UPDATE SET\n225.   title = excluded.title,\n226.   summary = excluded.summary,\n227.   body_json = excluded.body_json,\n228.   model = excluded.model,\n229.   status = 'ready',\n230.   updated_at = excluded.updated_at\n231. WHERE (study_content.title \u003c> excluded.title\n232.    OR study_content.summary \u003c> excluded.summary\n233.    OR study_content.body_json \u003c> excluded.body_json\n234.    OR study_content.model \u003c> excluded.model\n235.    OR study_content.status \u003c> 'ready')\n236. AND (study_content.model NOT LIKE 'chatgpt-automation/%'\n237.   OR (study_content.model = excluded.model AND excluded.updated_at >= study_content.updated_at));`);\n238. \n239.     statements.push(`INSERT INTO study_plans\n240.   (id, plan_date, category, title, detail, minutes, completed, created_at)\n241. SELECT 'content:' || id, content_date, ${sqlLiteral(category)}, title, ${sqlLiteral(detail)}, ${minutes}, 0, ${sqlLiteral(timestamp)}\n242. FROM study_content\n243. WHERE content_date = ${sqlLiteral(log.date)}\n244.   AND kind = ${sqlLiteral(log.kind)}\n245.   AND model = ${sqlLiteral(model)}\n246.   AND updated_at = ${sqlLiteral(timestamp)}\n247. ON CONFLICT(id) DO UPDATE SET\n248.   plan_date = excluded.plan_date,\n249.   category = excluded.category,\n250.   title = excluded.title,\n251.   detail = excluded.detail,\n252.   minutes = excluded.minutes\n253. WHERE study_plans.plan_date \u003c> excluded.plan_date\n254.    OR study_plans.category \u003c> excluded.category\n255.    OR study_plans.title \u003c> excluded.title\n256.    OR study_plans.detail \u003c> excluded.detail\n257.    OR study_plans.minutes \u003c> excluded.minutes;`);\n258.   }\n259. \n260.   return `${statements.join('\\n\\n')}\\n`;"}]}, {"id": "f-api", "kind": "file", "group": "front", "status": "유지", "evidenceState": "확인", "title": "worker/api.ts", "label": "API 노출", "path": "worker/api.ts", "summary": "/api/materials는 date와 optional kind를 받아 공개용 materials JSON을 반환합니다.", "done": ["date 형식과 kind 유효성을 검사한 뒤 listContent 결과를 공개 형태로 변환합니다."], "keep": ["이번 브랜치 분석에서는 실제 응답 호출 대신 코드 경로만 확인했습니다."], "next": ["실응답 확인 시 2026-09-13 영어·일본어 항목 수와 title을 대조합니다."], "codeSections": [{"title": "materials API", "path": "worker/api.ts", "lines": "60-67", "changeType": "확인", "code": "60. async function materials(url: URL, env: WorkerEnv): Promise\u003cResponse> {\n61.   const dateValue = url.searchParams.get('date') ?? kstDate();\n62.   const kindValue = url.searchParams.get('kind');\n63.   if (!isDate(dateValue)) return errorResponse(400, 'INVALID_DATE', 'date must use YYYY-MM-DD');\n64.   if (kindValue !== null && !isContentKind(kindValue)) return errorResponse(400, 'INVALID_KIND', 'kind must be english, japanese, or toeic');\n65.   const rows = await listContent(env, dateValue, kindValue ?? undefined);\n66.   const results = await Promise.all(rows.map(async (row) => publicContent(row, await listAssets(env, row.id))));\n67.   return json({ date: dateValue, materials: results });"}]}, {"id": "f-ui", "kind": "file", "group": "front", "status": "유지", "evidenceState": "확인", "title": "app/page.tsx", "label": "프런트 소비", "path": "app/page.tsx", "summary": "대시보드 화면은 dashboard와 materials를 함께 불러와 예약 학습 자료 아코디언에 렌더링합니다.", "done": ["selectedDate 기준으로 /api/materials를 병렬 fetch 합니다.", "materials가 있으면 카드 수, 제목, 말하기 문장, 항목 목록을 렌더링합니다."], "keep": ["이번 분석은 코드 경로 확인까지만 포함하고 실제 브라우저 화면 캡처는 확보하지 않았습니다."], "next": ["실제 브라우저 검증 시 materials-section과 material 카드 open 상태를 점검합니다."], "codeSections": [{"title": "dashboard와 materials 병렬 로드", "path": "app/page.tsx", "lines": "184-210", "changeType": "확인", "code": "184.     const [dashboardResult, materialsResult] = await Promise.allSettled([\n185.       fetch(`/api/dashboard?${query}`, { cache: 'no-store' }).then(async (response) => {\n186.         if (!response.ok) throw new Error('dashboard load failed');\n187.         return response.json() as Promise\u003cDashboardPayload>;\n188.       }),\n189.       fetch(`/api/materials?date=${selectedDate}`, { cache: 'no-store' }).then(async (response) => {\n190.         if (!response.ok) throw new Error('materials load failed');\n191.         return response.json() as Promise\u003cunknown>;\n192.       }),\n193.     ]);\n194.     if (loadRun !== dashboardLoadRun.current) return;\n195.     if (dashboardResult.status === 'fulfilled') {\n196.       const data = dashboardResult.value;\n197.       const nextMistakes = data.quizMistakes ?? [];\n198.       setPlans(data.plans); setLogs(data.logs); setCompletedDates(data.completedDates);\n199.       setScheduleRevision(value => value + 1);\n200.       setLegacyLogsCount(data.legacyLogsCount ?? 0); setGoal(data.goal); setLatestScore(data.latestScore); setReviewNotes(data.reviewNotes ?? []); setQuizMistakes(nextMistakes);\n201.       setMistakeAnswers((current) => Object.fromEntries(nextMistakes.flatMap((mistake) => {\n202.         const answer = current[mistake.id];\n203.         return answer && (answer.saving || answer.failed || answer.requestId === mistake.latestRequestId) ? [[mistake.id, answer]] : [];\n204.       })));\n205.     } else {\n206.       setPlans([]); setLogs([]); setCompletedDates([]); setReviewNotes([]); setQuizMistakes([]);\n207.       setNotice('학습 기록을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.');\n208.     }\n209.     if (materialsResult.status === 'fulfilled') setMaterials(readMaterials(materialsResult.value));\n210.     else { setMaterials([]); setNotice('예약 학습 자료를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.'); }"}, {"title": "예약 학습 자료 아코디언 렌더링", "path": "app/page.tsx", "lines": "685-709", "changeType": "확인", "code": "685.         \u003cdetails className=\"accordion-card materials-section\" id=\"materials-section\" key={`materials-${selectedDate}`}>\n686.           \u003csummary className=\"section-heading materials-heading\">\u003cdiv>\u003cp className=\"mini-label\">DAILY MATERIALS\u003c/p>\u003ch2>예약 학습 자료\u003c/h2>\u003c/div>\u003cp>{sortedMaterials.length}개 도착 \u003cMarker />\u003c/p>\u003c/summary>\n687.           \u003cdiv className=\"accordion-body\">\n688.             {loading ? \u003cdiv className=\"empty-state material-empty\">예약 자료를 불러오는 중...\u003c/div> : sortedMaterials.length ? \u003cdiv className=\"materials-grid\">\n689.               {sortedMaterials.map((material) => {\n690.                 const meta = materialKind[material.kind];\n691.                 const payload = readPayload(material.body);\n692.                 const audioAssets = material.assets.filter((asset) => asset.contentType.startsWith('audio/'));\n693.                 const canListen = Boolean(payload) && (material.kind === 'english' || material.kind === 'japanese');\n694.                 const language = canListen ? speechLanguage(material) : 'en-US';\n695.                 const listen = listeningState(language);\n696.                 const explanationReady = voiceStatus === 'ready' && Boolean(selectedVoice('ko-KR'));\n697.                 const examplesPlaying = speakingAction?.materialId === material.id && speakingAction.key === 'examples';\n698.                 return (\n699.                   \u003cdetails className={`material-card ${material.kind} ${focusedMaterialId === material.id ? 'is-focused' : ''}`} id={`material-${material.id}`} open={focusedMaterialId === material.id || undefined} key={material.id}>\n700.                     \u003csummary className=\"material-card-summary\">\u003cdiv>\u003cspan className=\"material-kind\">{meta.label}\u003c/span>\u003csmall>{material.status === 'completed' ? '완료' : material.status === 'in_progress' ? '학습 중' : meta.description}\u003c/small>\u003c/div>\u003cstrong>{material.title}\u003c/strong>\u003cspan>{payload?.items.length ?? 0}개 \u003cMarker />\u003c/span>\u003c/summary>\n701.                     \u003cdiv className=\"material-card-body\">\u003cp className=\"material-summary\">{material.summary}\u003c/p>\n702.                       \u003cdiv className=\"material-actions\">\n703.                         {canListen && payload && \u003cbutton className=\"listen-button\" disabled={listen.disabled} title={listen.label || undefined} onClick={() => speakExamples(material, payload)} aria-pressed={examplesPlaying}>\u003cspan aria-hidden=\"true\">{examplesPlaying ? '■' : '▶'}\u003c/span>{examplesPlaying ? ' 듣기 멈추기' : ` ${listen.label || exampleLabel(language)}`}\u003c/button>}\n704.                         {material.status === 'ready' && \u003cbutton onClick={() => void startMaterial(material)}>학습 시작\u003c/button>}\n705.                         \u003cbutton onClick={() => openCompletion({ type: 'material', id: material.id, title: material.title, part: meta.part, minutes: meta.minutes, date: selectedDate })}>{material.status === 'completed' ? '완료 기록 수정' : '학습 완료 기록'}\u003c/button>\n706.                       \u003c/div>\n707.                       {canListen && \u003cp className=\"listen-help\">{listen.label || '예문은 목표 언어로만 읽고, 문제·선택지·해설 듣기를 따로 선택할 수 있어요.'}\u003c/p>}\n708.                       {payload?.speakingSentence && \u003cdiv className=\"speaking-block\">\u003cspan>말하기 한 문장\u003c/span>\u003cstrong lang={meta.language}>{payload.speakingSentence}\u003c/strong>{payload.speakingMeaning && \u003cp>{payload.speakingMeaning}\u003c/p>}\u003c/div>}\n709.                       {audioAssets.map((asset) => \u003cfigure className=\"material-audio\" key={asset.id}>\u003cfigcaption>듣기 자료 · {asset.filename}\u003c/figcaption>\u003caudio controls preload=\"none\" src={asset.url}>오디오를 재생할 수 없는 브라우저입니다.\u003c/audio>\u003c/figure>)}"}]}, {"id": "f-test", "kind": "file", "group": "test", "status": "유지", "evidenceState": "확인", "title": "worker/study-log-sync.test.ts", "label": "테스트", "path": "worker/study-log-sync.test.ts", "summary": "동기화 파서와 SQL 생성기는 canonical 포맷, 선택지, 비밀 패턴, idempotent upsert를 테스트로 고정합니다.", "done": ["실제 toeic 파일 선택지 라벨 검증과 보안 패턴 거부 테스트가 존재합니다.", "SQL upsert가 같은 콘텐츠 id를 유지하는지 메모리 DB로 확인합니다."], "keep": ["동기화 계약 변경 시 이 테스트군이 가장 먼저 깨져야 정상입니다."], "next": ["새 학습 포맷을 도입하면 parse 규칙과 함께 테스트 예제를 확장합니다."], "codeSections": [{"title": "canonical 포맷과 TOEIC 선택지 검증", "path": "worker/study-log-sync.test.ts", "lines": "49-79", "changeType": "확인", "code": "49. test('parses the canonical Markdown format and path', () => {\n50.   const parsed = parseStudyLog('study-logs/2026/08/25/english.md', studyLog());\n51.   assert.equal(parsed.date, '2026-08-25');\n52.   assert.equal(parsed.kind, 'english');\n53.   assert.equal(parsed.payload.items.length, 5);\n54.   assert.equal(parsed.payload.title, \"Today's English\");\n55. });\n56. \n57. test('supports the ten-item TOEIC contract', () => {\n58.   const parsed = parseStudyLog('study-logs/2026/08/25/toeic.md', studyLog({ kind: 'toeic' }));\n59.   assert.equal(parsed.payload.items.length, 10);\n60.   assert.equal(parsed.payload.speakingSentence, undefined);\n61. });\n62. \n63. test('accepts and preserves structured TOEIC A, B, C, D options', () => {\n64.   const parsed = parseStudyLog('study-logs/2026/08/25/toeic.md', studyLog({ kind: 'toeic', structuredOptions: true }));\n65.   assert.deepEqual(parsed.payload.items[0].options, [\n66.     { label: 'A', text: 'Choice A' }, { label: 'B', text: 'Choice B' },\n67.     { label: 'C', text: 'Choice C' }, { label: 'D', text: 'Choice D' },\n68.   ]);\n69. });\n70. \n71. test('the latest saved TOEIC lesson exposes four choices and a detectable answer for every item', () => {\n72.   const path = 'study-logs/2026/09/07/toeic.md';\n73.   const parsed = parseStudyLog(path, readFileSync(new URL(`../${path}`, import.meta.url), 'utf8'));\n74.   assert.equal(parsed.payload.items.length, 10);\n75.   for (const item of parsed.payload.items) {\n76.     assert.deepEqual(item.options?.map((option) => option.label), ['A', 'B', 'C', 'D']);\n77.     assert.notEqual(correctOptionLabel(item.answer), null);\n78.   }\n79. });"}, {"title": "비밀 패턴 거부와 idempotent upsert", "path": "worker/study-log-sync.test.ts", "lines": "120-140", "changeType": "확인", "code": "120. test('rejects oversized files and common secret formats', () => {\n121.   assert.throws(\n122.     () => parseStudyLog('study-logs/2026/08/25/english.md', `${studyLog()}${'x'.repeat(96 * 1024)}`),\n123.     /file must be between/,\n124.   );\n125.   assert.throws(\n126.     () => parseStudyLog('study-logs/2026/08/25/english.md', studyLog().replace('A practical daily lesson', 'Authorization: Bearer secret-value')),\n127.     /appears to contain/,\n128.   );\n129. });\n130. \n131. test('SQL generation is idempotent and escapes quotes as data', () => {\n132.   const parsed = parseStudyLog(\n133.     'study-logs/2026/08/25/english.md',\n134.     studyLog({ title: \"Today's lesson'); DROP TABLE study_content; --\" }),\n135.   );\n136.   const sql = buildStudyLogSql([parsed]);\n137.   assert.match(sql, /ON CONFLICT\\(content_date, kind\\) DO UPDATE/);\n138.   assert.match(sql, /WHERE \\(study_content\\.title \u003c> excluded\\.title/);\n139.   assert.match(sql, /Today''s lesson''\\); DROP TABLE study_content; --/);\n140.   assert.equal(sqlLiteral(\"O'Reilly\"), \"'O''Reilly'\");"}]}, {"id": "t-branch", "kind": "task", "group": "cause", "status": "완료", "evidenceState": "확인", "title": "브랜치 스냅샷", "label": "작업", "path": "", "summary": "지금 브랜치는 main과 동일한 HEAD이며, 분석 시점의 로컬 변경은 보고서 파일 생성 전까지 없었습니다.", "done": ["브랜치: copilot/work-map-guide", "HEAD: 0aad5d54c91b70fb2dc281298eb8a0408b43fcf5", "origin/main...HEAD diff: 없음"], "keep": ["브랜치 고유 코드 수정이 없으므로 최근 main 반영 상태를 기준으로 판단합니다."], "next": ["새 변경을 시작하기 전에는 이 기준점에서 다시 diff를 잡으면 됩니다."], "acceptance": ["git status가 깨끗하고 비교 기준 브랜치가 분명해야 합니다.", "최근 작업을 설명할 커밋·워크플로 근거가 있어야 합니다."], "failureResponse": ["origin/main을 모를 때는 fetch 후 merge-base를 다시 확인합니다.", "로컬 변경이 있으면 분석 범위와 생성 산출물을 분리해 기록합니다."], "sources": ["git status --short --branch", "git fetch origin main:refs/remotes/origin/main --depth=50", "git diff --stat origin/main...HEAD"]}, {"id": "t-sync", "kind": "task", "group": "change", "status": "완료", "evidenceState": "확인", "title": "검증·동기화 상태 확인", "label": "작업", "path": "", "summary": "영어와 일본어 학습 로그는 각각 성공 워크플로를 통과했고 일본어 run 로그에서 D1 쓰기까지 확인했습니다.", "done": ["run #54 english success", "run #55 japanese success", "japanese job log: validated 1 file, prepared 1 file, executed 2 queries, rows written 8"], "keep": ["study-logs 전용 푸시는 Deploy Cloudflare Worker가 아니라 Sync ChatGPT study logs가 담당합니다."], "next": ["실패가 생기면 run URL과 job log를 함께 대조합니다."], "acceptance": ["validate-and-sync job의 Validate / Prepare / Upsert 단계가 모두 success여야 합니다.", "job log에서 selected 파일 수와 SQL 실행이 일치해야 합니다."], "failureResponse": ["Study-log commits must not include other paths 오류면 커밋 경로를 분리합니다.", "owner 검증 실패면 automation_id 교체 여부와 base SHA를 다시 확인합니다."], "sources": ["https://github.com/feed-mina/language-study-log/actions/runs/34722315422", "https://github.com/feed-mina/language-study-log/actions/runs/34725404872", "job 103638540728 log tail"]}, {"id": "t-ui", "kind": "task", "group": "front", "status": "예정", "evidenceState": "미확인", "title": "사용자 노출 확인", "label": "작업", "path": "", "summary": "코드상 노출 경로는 확인했지만 실제 브라우저에서 2026-09-13 자료가 보이는지까지는 아직 검증하지 않았습니다.", "done": ["worker/api.ts와 app/page.tsx의 연결 경로는 확인됨"], "keep": ["실제 화면 검증 전에는 완료로 표기하지 않습니다."], "next": ["대시보드 날짜를 2026-09-13로 바꾸고 예약 학습 자료 섹션을 펼쳐 카드 제목/개수를 확인합니다."], "acceptance": ["영어·일본어 카드가 날짜 기준으로 노출되어야 합니다.", "카드 제목과 항목 수가 Markdown 구조화 데이터와 일치해야 합니다."], "failureResponse": ["UI가 비어 있으면 /api/materials 응답과 D1 sync run 상태를 먼저 비교합니다.", "한 언어만 없으면 해당 날짜 파일, automation_id, workflow run을 순서대로 재확인합니다."], "sources": ["worker/api.ts:60-67", "app/page.tsx:184-210", "app/page.tsx:685-709"]}], "screenModels": [{"id": "screen-now", "title": "현재 확인된 구현 모형", "status": "모형", "summary": "실제 캡처는 확보하지 못했으며, 코드상 확인된 화면 구조만 정리했습니다.", "points": ["선택 날짜마다 dashboard와 materials를 동시에 요청", "예약 학습 자료 아코디언에 도착 개수 표시", "영어·일본어 카드는 말하기 문장과 항목 목록을 포함"]}, {"id": "screen-next", "title": "사용자 확인 시 기대 모형", "status": "예상", "summary": "2026-09-13를 선택하면 영어 1건, 일본어 1건이 함께 보여야 합니다.", "points": ["영어 카드 제목: 실무 영어 5문장 — 데이터 점검과 단계적 대응", "일본어 카드 제목: JLPT N5 이동 수단 で와 동행 と — 2026-09-13", "TOEIC 부재는 일요일 운영 규칙과 일치"]}], "verification": {"items": [{"title": "브랜치 비교", "status": "완료", "evidenceState": "확인", "detail": "origin/main...HEAD diff 없음, merge-base=HEAD"}, {"title": "영어 로그 커밋", "status": "완료", "evidenceState": "확인", "detail": "6a684bd docs(study-log): sync english 2026-09-13"}, {"title": "일본어 로그 커밋", "status": "완료", "evidenceState": "확인", "detail": "0aad5d5 docs(study-log): sync japanese 2026-09-13"}, {"title": "Sync workflow #54", "status": "완료", "evidenceState": "확인", "detail": "english run success"}, {"title": "Sync workflow #55", "status": "완료", "evidenceState": "확인", "detail": "japanese run success, rows written 8"}, {"title": "Deploy workflow", "status": "유지", "evidenceState": "확인", "detail": "study-logs/** 는 paths-ignore 이므로 이번 로그 푸시에는 비대상"}, {"title": "실제 브라우저 화면", "status": "예정", "evidenceState": "미확인", "detail": "코드 경로만 확인, live 응답·캡처는 미실시"}], "groups": {"nextDev": ["필요 시 /api/materials?date=2026-09-13 실응답과 대시보드 표시를 짝지어 확인", "다음 포맷 변경 전 parseStudyLog / tests / workflow를 한 묶음으로 점검"], "currentGuidance": ["현재 브랜치만 보면 새 코드 변경보다 오늘 학습 로그 반영 상태 점검이 핵심입니다.", "일요일이라 TOEIC 로그가 없는 상태는 README 일정과 모순되지 않습니다."], "verificationScope": ["확인함: git 상태, 최근 커밋, README 일정, sync workflow 정의, workflow runs, job log tail, parser/API/UI 코드 경로", "미확인: 실제 워커 응답 본문, 브라우저 실화면, Cloudflare D1 데이터 직접 조회"]}}, "history": {"commits": [{"sha": "0aad5d5", "message": "docs(study-log): sync japanese 2026-09-13", "time": "2026-09-13 08:26 +0900"}, {"sha": "6a684bd", "message": "docs(study-log): sync english 2026-09-13", "time": "2026-09-13 07:17 +0900"}], "workflowRuns": [{"name": "Sync ChatGPT study logs #55", "result": "success", "url": "https://github.com/feed-mina/language-study-log/actions/runs/34725404872"}, {"name": "Sync ChatGPT study logs #54", "result": "success", "url": "https://github.com/feed-mina/language-study-log/actions/runs/34722315422"}, {"name": "Deploy Cloudflare Worker", "result": "이번 로그 푸시 비대상", "url": "https://github.com/feed-mina/language-study-log/blob/main/.github/workflows/deploy-worker.yml"}], "commands": ["git status --short --branch", "git log --stat --decorate -2", "git fetch origin main:refs/remotes/origin/main --depth=50", "git diff --stat origin/main...HEAD"], "citations": ["README.md:18, README.md:24-26, README.md:127-131", ".github/workflows/sync-study-logs.yml:1-12, 35-111", ".github/workflows/deploy-worker.yml:1-8", "docs/chatgpt-study-sync.md:59-66", "scripts/study-log-to-sql.ts:142-181, 189-260", "worker/api.ts:60-67", "app/page.tsx:184-210, 685-709", "worker/study-log-sync.test.ts:49-79, 120-140"]}, "mapLanes": [{"title": "파일 흐름", "rows": [["f-english", "→", "f-workflow", "→", "f-parser"], ["f-japanese", "→", "f-workflow", "→", "f-api"], ["f-test", "→", "f-parser", "→", "f-api"], ["f-api", "→", "f-ui"]]}, {"title": "작업 흐름", "rows": [["t-branch", "→", "t-sync", "→", "t-ui"]]}]}</script>
+  <script>
+    const reportDataElement = document.getElementById('report-data');
+    const data = reportDataElement ? JSON.parse(reportDataElement.textContent) : { nodes: [], stages: [], overview: { followUp: [] }, verification: { items: [], groups: { nextDev: [], currentGuidance: [], verificationScope: [] } }, history: { commits: [], workflowRuns: [], commands: [], citations: [] }, mapLanes: [], meta: {} };
+    const nodeMap = Object.fromEntries((data.nodes || []).map((node) => [node.id, node]));
+    let selectedNodeId = nodeMap['f-japanese'] ? 'f-japanese' : (data.nodes?.[0]?.id || '');
+    let selectedStageId = data.stages?.find((stage) => stage.selected)?.id || (data.stages?.[0]?.id || '');
+
+    const text = (selector, value) => {
+      const target = document.querySelector(selector);
+      if (target) target.textContent = value;
+    };
+    const list = (selector, items) => {
+      const target = document.querySelector(selector);
+      if (!target) return;
+      target.textContent = '';
+      items.forEach((item) => {
+        const li = document.createElement('li');
+        li.textContent = item;
+        target.appendChild(li);
+      });
+    };
+    const makeChip = (label, className) => {
+      const chip = document.createElement('span');
+      chip.className = `chip ${className}`;
+      chip.textContent = label;
+      return chip;
+    };
+    const normalizeStatusClass = (value) => value === '완료' ? '완료' : value === '예정' ? '예정' : '유지';
+    const groupLabel = (value) => ({ change: '변경', cause: '원인', front: '프런트', test: '테스트' }[value] || '기타');
+    function renderMeta() {
+      text('#headline', data.overview.headline);
+      text('#meta-repo', data.meta.repo);
+      text('#meta-branch', `${data.meta.branch} · ${data.meta.head.slice(0, 7)}`);
+      text('#meta-worktree', `${data.meta.worktree} · ${data.meta.diffSummary}`);
+      text('#meta-path', data.meta.reportPath);
+      text('#overview-direction', data.overview.direction);
+      text('#overview-next', data.overview.nextAction);
+      list('#followup-list', data.overview.followUp);
+    }
+    function renderFlow() {
+      const grid = document.getElementById('flow-grid');
+      grid.textContent = '';
+      if (!data.stages || data.stages.length === 0) {
+        const detail = document.getElementById('flow-detail');
+        detail.textContent = '표시할 진행 단계 데이터가 없습니다.';
+        return;
+      }
+      data.stages.forEach((stage) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'flow-step';
+        btn.dataset.stageId = stage.id;
+        if (stage.current) btn.setAttribute('aria-current', 'step');
+        if (stage.id === selectedStageId) btn.classList.add('is-selected');
+        const title = document.createElement('strong');
+        title.textContent = stage.title;
+        const summary = document.createElement('p');
+        summary.textContent = stage.summary;
+        const chips = document.createElement('div');
+        chips.className = 'chip-row';
+        chips.append(makeChip(stage.status, `status-${normalizeStatusClass(stage.status)}`));
+        chips.append(makeChip(stage.evidenceState, `evidence-${stage.evidenceState}`));
+        btn.append(title, chips, summary);
+        btn.addEventListener('click', () => { selectedStageId = stage.id; renderFlow(); });
+        grid.appendChild(btn);
+      });
+      const stage = data.stages.find((item) => item.id === selectedStageId) || data.stages[0];
+      const detail = document.getElementById('flow-detail');
+      detail.textContent = '';
+      const heading = document.createElement('h3');
+      heading.textContent = stage.title;
+      const chips = document.createElement('div');
+      chips.className = 'chip-row';
+      chips.append(makeChip(stage.status, `status-${normalizeStatusClass(stage.status)}`));
+      chips.append(makeChip(stage.evidenceState, `evidence-${stage.evidenceState}`));
+      const meta = document.createElement('p');
+      meta.textContent = `확인 시점: ${stage.checkedAt}`;
+      const summary = document.createElement('p');
+      summary.textContent = stage.summary;
+      const ul = document.createElement('ul');
+      ul.className = 'list-block';
+      stage.details.forEach((item) => {
+        const li = document.createElement('li');
+        li.textContent = item;
+        ul.appendChild(li);
+      });
+      detail.append(heading, chips, meta, summary, ul);
+    }
+    function renderMap() {
+      const mapPanel = document.getElementById('map-panel');
+      mapPanel.textContent = '';
+      data.mapLanes.forEach((lane) => {
+        const container = document.createElement('section');
+        container.className = 'lane';
+        const heading = document.createElement('h3');
+        heading.textContent = lane.title;
+        container.appendChild(heading);
+        lane.rows.forEach((row) => {
+          const rowEl = document.createElement('div');
+          rowEl.className = 'map-row';
+          row.forEach((item) => {
+            if (item === '→') {
+              const arrow = document.createElement('span');
+              arrow.className = 'arrow';
+              arrow.textContent = '→';
+              rowEl.appendChild(arrow);
+              return;
+            }
+            const node = nodeMap[item];
+            if (!node) {
+              const missing = document.createElement('span');
+              missing.className = 'arrow';
+              missing.textContent = `누락된 노드: ${item}`;
+              rowEl.appendChild(missing);
+              return;
+            }
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = `node-button group-${node.group}`;
+            btn.setAttribute('aria-pressed', String(selectedNodeId === node.id));
+            btn.dataset.nodeId = node.id;
+            const title = document.createElement('strong');
+            title.textContent = node.title;
+            const mini = document.createElement('span');
+            mini.className = 'mini';
+            mini.textContent = `${groupLabel(node.group)} · ${node.label} · ${node.status} · ${node.evidenceState}`;
+            btn.append(title, mini);
+            btn.addEventListener('click', () => { selectedNodeId = node.id; renderMap(); renderDetail(true); });
+            rowEl.appendChild(btn);
+          });
+          container.appendChild(rowEl);
+        });
+        mapPanel.appendChild(container);
+      });
+    }
+    function addListSection(root, titleText, items) {
+      if (!items || items.length === 0) return;
+      const section = document.createElement('section');
+      const title = document.createElement('h4');
+      title.textContent = titleText;
+      const ul = document.createElement('ul');
+      ul.className = 'list-block';
+      items.forEach((item) => {
+        const li = document.createElement('li');
+        li.textContent = item;
+        ul.appendChild(li);
+      });
+      section.append(title, ul);
+      root.appendChild(section);
+    }
+    function renderDetail(focusTitle = false) {
+      const node = nodeMap[selectedNodeId] || data.nodes?.[0];
+      const title = document.getElementById('detail-title');
+      const body = document.getElementById('detail-body');
+      if (!node) {
+        title.textContent = '상세 데이터 없음';
+        body.textContent = '선택할 파일 또는 작업 데이터가 없습니다.';
+        document.getElementById('related-button').disabled = true;
+        document.getElementById('related-button').setAttribute('aria-disabled', 'true');
+        return;
+      }
+      selectedNodeId = node.id;
+      title.textContent = node.title;
+      body.textContent = '';
+
+      const intro = document.createElement('section');
+      const chips = document.createElement('div');
+      chips.className = 'chip-row';
+      chips.append(makeChip(node.label, 'label-chip'));
+      chips.append(makeChip(node.status, `status-${normalizeStatusClass(node.status)}`));
+      chips.append(makeChip(node.evidenceState, `evidence-${node.evidenceState}`));
+      intro.appendChild(chips);
+      if (node.path) {
+        const path = document.createElement('p');
+        path.textContent = node.path;
+        intro.appendChild(path);
+      }
+      const summary = document.createElement('p');
+      summary.textContent = node.summary;
+      intro.appendChild(summary);
+      body.appendChild(intro);
+
+      addListSection(body, '완료', node.done || []);
+      addListSection(body, '유지', node.keep || []);
+      addListSection(body, '다음', node.next || []);
+
+      if (node.kind === 'task') {
+        addListSection(body, '통과 기준', node.acceptance || []);
+        addListSection(body, '실패 대응', node.failureResponse || []);
+        addListSection(body, '출처', node.sources || []);
+      }
+
+      if (node.codeSections && node.codeSections.length) {
+        const section = document.createElement('section');
+        const heading = document.createElement('h4');
+        heading.textContent = '관련 코드';
+        section.appendChild(heading);
+        node.codeSections.forEach((part, index) => {
+          const block = document.createElement('article');
+          block.className = 'code-section';
+          block.id = `code-section-${index}`;
+          const header = document.createElement('header');
+          const left = document.createElement('strong');
+          left.textContent = `${part.title} · ${part.path}:${part.lines}`;
+          const right = document.createElement('span');
+          right.textContent = part.changeType;
+          header.append(left, right);
+          const pre = document.createElement('pre');
+          const code = document.createElement('code');
+          code.textContent = part.code;
+          pre.appendChild(code);
+          block.append(header, pre);
+          section.appendChild(block);
+        });
+        body.appendChild(section);
+      }
+
+      const relatedButton = document.getElementById('related-button');
+      const hasCodeSections = Boolean(node.codeSections && node.codeSections.length);
+      relatedButton.disabled = !hasCodeSections;
+      relatedButton.setAttribute('aria-disabled', String(!hasCodeSections));
+      relatedButton.onclick = () => {
+        const target = body.querySelector('.code-section');
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      };
+
+      if (focusTitle) {
+        requestAnimationFrame(() => {
+          document.getElementById('detail-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          title.focus();
+        });
+      }
+    }
+    function renderScreens() {
+      const root = document.getElementById('screen-models');
+      root.textContent = '';
+      data.screenModels.forEach((model) => {
+        const card = document.createElement('article');
+        card.className = 'model-card';
+        const heading = document.createElement('h3');
+        heading.textContent = model.title;
+        const pill = document.createElement('span');
+        pill.className = 'model-pill';
+        pill.textContent = model.status;
+        const summary = document.createElement('p');
+        summary.textContent = model.summary;
+        const box = document.createElement('div');
+        box.className = 'model-box';
+        const ul = document.createElement('ul');
+        ul.className = 'list-block';
+        model.points.forEach((item) => {
+          const li = document.createElement('li');
+          li.textContent = item;
+          ul.appendChild(li);
+        });
+        box.appendChild(ul);
+        card.append(heading, pill, summary, box);
+        root.appendChild(card);
+      });
+    }
+    function renderVerification() {
+      const verification = data.verification || {};
+      const verificationGroups = verification.groups || { nextDev: [], currentGuidance: [], verificationScope: [] };
+      const grid = document.getElementById('verification-grid');
+      grid.textContent = '';
+      (verification.items || []).forEach((item) => {
+        const card = document.createElement('article');
+        card.className = 'verification-card';
+        card.setAttribute('aria-label', `${item.title} · 상태 ${item.status} · 근거 ${item.evidenceState}`);
+        const heading = document.createElement('strong');
+        heading.textContent = item.title;
+        const chips = document.createElement('div');
+        chips.className = 'chip-row';
+        chips.append(makeChip(item.status, `status-${normalizeStatusClass(item.status)}`));
+        chips.append(makeChip(item.evidenceState, `evidence-${item.evidenceState}`));
+        const detail = document.createElement('p');
+        detail.textContent = item.detail;
+        card.append(heading, chips, detail);
+        grid.appendChild(card);
+      });
+      list('#next-dev-list', verificationGroups.nextDev || []);
+      list('#current-guidance-list', verificationGroups.currentGuidance || []);
+      list('#verification-scope-list', verificationGroups.verificationScope || []);
+    }
+    function renderHistory() {
+      list('#commit-list', data.history.commits.map((item) => `${item.sha} · ${item.message} · ${item.time}`));
+      list('#workflow-list', data.history.workflowRuns.map((item) => `${item.name} · ${item.result} · ${item.url}`));
+      list('#command-list', data.history.commands);
+      list('#citation-list', data.history.citations);
+    }
+    function setupTabs() {
+      const tabs = Array.from(document.querySelectorAll('[role="tab"]')).filter((tab) => document.getElementById(tab.getAttribute('aria-controls')));
+      const panels = tabs.map((tab) => document.getElementById(tab.getAttribute('aria-controls')));
+      function focusPanel(panel) {
+          if (!panel) return;
+          const focusable = panel.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+          if (focusable) focusable.focus();
+          else {
+          panel.tabIndex = -1;
+          panel.focus();
+        }
+      }
+      function activate(tab, focusTab = false) {
+        tabs.forEach((item, index) => {
+          const selected = item === tab;
+          item.setAttribute('aria-selected', String(selected));
+          item.tabIndex = selected ? 0 : -1;
+          panels[index].hidden = !selected;
+        });
+        if (focusTab) tab.focus();
+      }
+      tabs.forEach((tab, index) => {
+        tab.addEventListener('click', () => activate(tab));
+        tab.addEventListener('keydown', (event) => {
+          let nextIndex = index;
+          if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
+          else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length;
+          else if (event.key === 'Home') nextIndex = 0;
+          else if (event.key === 'End') nextIndex = tabs.length - 1;
+          else if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            focusPanel(document.getElementById(tab.getAttribute('aria-controls')));
+            return;
+          }
+          else return;
+          event.preventDefault();
+          activate(tabs[nextIndex], true);
+        });
+      });
+    }
+    function setupFollowup() {
+      const button = document.getElementById('followup-toggle');
+      const body = document.getElementById('followup-body');
+      button.addEventListener('click', () => {
+        const expanded = button.getAttribute('aria-expanded') === 'true';
+        const nextExpanded = !expanded;
+        button.setAttribute('aria-expanded', String(nextExpanded));
+        body.hidden = !nextExpanded;
+      });
+    }
+
+    renderMeta();
+    renderFlow();
+    renderMap();
+    renderDetail();
+    renderScreens();
+    renderVerification();
+    renderHistory();
+    setupTabs();
+    setupFollowup();
+  </script>
+</body>
+</html>
