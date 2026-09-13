@@ -33,6 +33,10 @@ This repository also includes a copy-friendly shared-skill scaffold at:
 
 Use that directory when you want to create a standalone public or shared skill repository with a `skills/` root and reusable adaptation docs.
 
+That scaffold now also includes `gh skill install` publication and installation guidance in:
+
+- `templates/work-map-report-skill-repo/skills/work-map-report/publish-and-install.md`
+
 ## Notes
 
 - Project skills are only recognized inside repositories that contain the skill directory.

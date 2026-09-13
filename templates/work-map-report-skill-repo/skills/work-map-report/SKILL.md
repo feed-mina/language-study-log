@@ -48,3 +48,5 @@ The HTML report should include:
 ## Adapting to a repository
 
 Before first use in a new repository, customize the repository-specific parts listed in `adaptation-checklist.md`.
+
+For standalone shared-repository publication and `gh skill install` usage, see `publish-and-install.md`.
