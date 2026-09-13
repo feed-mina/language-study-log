@@ -211,6 +211,7 @@
       return chip;
     };
     const normalizeStatusClass = (value) => value === '완료' ? '완료' : value === '예정' ? '예정' : '유지';
+    const groupLabel = (value) => ({ change: '변경', cause: '원인', front: '프런트', test: '테스트' }[value] || '기타');
     function renderMeta() {
       text('#headline', data.overview.headline);
       text('#meta-repo', data.meta.repo);
@@ -307,7 +308,7 @@
             title.textContent = node.title;
             const mini = document.createElement('span');
             mini.className = 'mini';
-            mini.textContent = `${node.label} · ${node.status} · ${node.evidenceState}`;
+            mini.textContent = `${groupLabel(node.group)} · ${node.label} · ${node.status} · ${node.evidenceState}`;
             btn.append(title, mini);
             btn.addEventListener('click', () => { selectedNodeId = node.id; renderMap(); renderDetail(true); });
             rowEl.appendChild(btn);
@@ -512,8 +513,9 @@
       const body = document.getElementById('followup-body');
       button.addEventListener('click', () => {
         const expanded = button.getAttribute('aria-expanded') === 'true';
-        button.setAttribute('aria-expanded', String(!expanded));
-        body.hidden = expanded;
+        const nextExpanded = !expanded;
+        button.setAttribute('aria-expanded', String(nextExpanded));
+        body.hidden = !nextExpanded;
       });
     }
 
