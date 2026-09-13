@@ -195,9 +195,13 @@
     let selectedNodeId = nodeMap['f-japanese'] ? 'f-japanese' : (data.nodes?.[0]?.id || '');
     let selectedStageId = data.stages?.find((stage) => stage.selected)?.id || (data.stages?.[0]?.id || '');
 
-    const text = (selector, value) => { document.querySelector(selector).textContent = value; };
+    const text = (selector, value) => {
+      const target = document.querySelector(selector);
+      if (target) target.textContent = value;
+    };
     const list = (selector, items) => {
       const target = document.querySelector(selector);
+      if (!target) return;
       target.textContent = '';
       items.forEach((item) => {
         const li = document.createElement('li');
@@ -445,9 +449,11 @@
       });
     }
     function renderVerification() {
+      const verification = data.verification || {};
+      const verificationGroups = verification.groups || { nextDev: [], currentGuidance: [], verificationScope: [] };
       const grid = document.getElementById('verification-grid');
       grid.textContent = '';
-      data.verification.items.forEach((item) => {
+      (verification.items || []).forEach((item) => {
         const card = document.createElement('article');
         card.className = 'verification-card';
         card.setAttribute('aria-label', `${item.title} · 상태 ${item.status} · 근거 ${item.evidenceState}`);
@@ -462,9 +468,9 @@
         card.append(heading, chips, detail);
         grid.appendChild(card);
       });
-      list('#next-dev-list', data.verification.groups.nextDev);
-      list('#current-guidance-list', data.verification.groups.currentGuidance);
-      list('#verification-scope-list', data.verification.groups.verificationScope);
+      list('#next-dev-list', verificationGroups.nextDev || []);
+      list('#current-guidance-list', verificationGroups.currentGuidance || []);
+      list('#verification-scope-list', verificationGroups.verificationScope || []);
     }
     function renderHistory() {
       list('#commit-list', data.history.commits.map((item) => `${item.sha} · ${item.message} · ${item.time}`));
@@ -473,12 +479,13 @@
       list('#citation-list', data.history.citations);
     }
     function setupTabs() {
-      const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
+      const tabs = Array.from(document.querySelectorAll('[role="tab"]')).filter((tab) => document.getElementById(tab.getAttribute('aria-controls')));
       const panels = tabs.map((tab) => document.getElementById(tab.getAttribute('aria-controls')));
       function focusPanel(panel) {
-        const focusable = panel.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-        if (focusable) focusable.focus();
-        else {
+          if (!panel) return;
+          const focusable = panel.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+          if (focusable) focusable.focus();
+          else {
           panel.tabIndex = -1;
           panel.focus();
         }
