@@ -64,5 +64,6 @@ If prior work-map history is available, append or summarize it instead of replac
 - For repository scope, keep this skill in `.github/skills/work-map-report/`.
 - For personal cross-project reuse, copy this entire directory to `~/.copilot/skills/work-map-report/` or `~/.agents/skills/work-map-report/`.
 - Project skills do not automatically propagate to other repositories. Reuse requires a personal installation or copying the skill into each repository.
+- For a standalone shared skill repository, start from `templates/work-map-report-skill-repo/`.
 
 See `personal-install.md` in this directory for the recommended sharing pattern.

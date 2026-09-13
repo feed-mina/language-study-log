@@ -25,6 +25,14 @@ inside that repository.
 2. Install it personally when you want the skill recognized across many repositories.
 3. Copy or publish the same directory into selected repositories when teammates should get the same skill automatically there.
 
+## Shared repository scaffold
+
+This repository also includes a copy-friendly shared-skill scaffold at:
+
+- `templates/work-map-report-skill-repo/`
+
+Use that directory when you want to create a standalone public or shared skill repository with a `skills/` root and reusable adaptation docs.
+
 ## Notes
 
 - Project skills are only recognized inside repositories that contain the skill directory.
