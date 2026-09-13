@@ -21,7 +21,7 @@ Use this skill when the user asks for any of the following:
 
 1. Verify the task facts before writing the report. Do not invent evidence.
 2. Prefer repository files, Git metadata, and GitHub workflow results as evidence.
-3. Use absolute repository paths in the report when file paths matter.
+3. Keep report output portable by using repository-relative paths. Use absolute paths only for local tool calls when the execution environment requires them.
 4. If the task mentions CI, workflow, build, or test status, use GitHub Actions tools to verify the run status and logs.
 5. If browser automation is unavailable, explicitly record that limitation and fall back to static file, JSON, JavaScript, and secret-scan based verification.
 
@@ -32,15 +32,15 @@ Follow this order unless the user asks for a narrower scope.
 1. Confirm branch state and whether the current branch matches `origin/main` when that claim appears in the report.
 2. Confirm the expected study-log files exist for the target date under `study-logs/YYYY/MM/DD/`.
 3. Confirm the sync workflow behavior from:
-   - `/home/runner/work/language-study-log/language-study-log/.github/workflows/sync-study-logs.yml`
+   - `.github/workflows/sync-study-logs.yml`
 4. Confirm parsing and D1 upsert behavior from:
-   - `/home/runner/work/language-study-log/language-study-log/scripts/study-log-to-sql.ts`
+   - `scripts/study-log-to-sql.ts`
 5. Confirm materials API exposure from:
-   - `/home/runner/work/language-study-log/language-study-log/worker/api.ts`
+   - `worker/api.ts`
 6. Confirm UI rendering expectations from:
-   - `/home/runner/work/language-study-log/language-study-log/app/page.tsx`
+   - `app/page.tsx`
 7. Confirm automated coverage from:
-   - `/home/runner/work/language-study-log/language-study-log/worker/study-log-sync.test.ts`
+   - `worker/study-log-sync.test.ts`
 8. Confirm workflow run success for `Sync ChatGPT study logs` when the report mentions run numbers.
 
 ## Report output requirements
