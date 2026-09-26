@@ -40,7 +40,11 @@ export const studyArchiveBatches = sqliteTable('study_archive_batches', {
   id: text('id').primaryKey(), requestId: text('request_id').notNull(), snapshotToken: text('snapshot_token').notNull(),
   backlogCount: integer('backlog_count').notNull(), replacedTodayCount: integer('replaced_today_count').notNull(), totalMinutes: integer('total_minutes').notNull(),
   reason: text('reason').notNull(), resultJson: text('result_json').notNull().default('{}'), createdAt: text('created_at').notNull(),
-}, (table) => [uniqueIndex('uq_study_archive_batches_request').on(table.requestId)]);
+  restoredAt: text('restored_at'), restoreRequestId: text('restore_request_id'), restoreResultJson: text('restore_result_json').notNull().default('{}'),
+}, (table) => [
+  uniqueIndex('uq_study_archive_batches_request').on(table.requestId),
+  uniqueIndex('uq_study_archive_batches_restore_request').on(table.restoreRequestId),
+]);
 
 export const studyArchiveBatchItems = sqliteTable('study_archive_batch_items', {
   batchId: text('batch_id').notNull(), planId: text('plan_id').notNull(), itemScope: text('item_scope').notNull(),

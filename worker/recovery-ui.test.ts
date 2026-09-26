@@ -5,6 +5,8 @@ import test from 'node:test';
 const page = readFileSync(new URL('../app/components/RecoveryQueue.tsx', import.meta.url), 'utf8');
 const home = readFileSync(new URL('../app/page.tsx', import.meta.url), 'utf8');
 const styles = readFileSync(new URL('../app/globals.css', import.meta.url), 'utf8');
+const library = readFileSync(new URL('../app/components/StudyLibrary.tsx', import.meta.url), 'utf8');
+const schedule = readFileSync(new URL('../app/components/StudySchedule.tsx', import.meta.url), 'utf8');
 
 test('recovery UI keeps every lifecycle action explicit and accessibly named', () => {
   assert.match(page, /오늘로 가져오기/);
@@ -37,4 +39,21 @@ test('restart UI previews the batch before a separate confirmation and states th
   assert.match(home, /영어 20분 \+ 일본어 20분 · TOEIC 일시정지/);
   assert.match(home, /기존 자료와 기록 유지/);
   assert.match(styles, /\.restart-panel/);
+});
+
+test('자료함 UI는 검색·언어·상태·날짜 필터와 명시적인 묶음 복원을 제공한다', () => {
+  assert.match(library, /지난 학습 자료함/);
+  assert.match(library, /제목·요약·문장 검색/);
+  assert.match(library, /value="english"/);
+  assert.match(library, /value="completed"/);
+  assert.match(library, /type="date"/);
+  assert.match(library, /window\.confirm/);
+  assert.match(library, /batch_id: batch\.id/);
+  assert.match(styles, /\.library-grid/);
+});
+
+test('복습 UI는 약한 단어와 낮은 단계를 우선한다는 근거를 표시한다', () => {
+  assert.match(schedule, /약한 단어를 먼저/);
+  assert.match(schedule, /card\.priorityLabel/);
+  assert.match(styles, /\.review-priority\.weak/);
 });

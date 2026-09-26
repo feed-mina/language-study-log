@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers';
 
 import { ensureStudyCycleSchema, isDate, readIntegrationStudy, StudyCycleError } from '../../../../../worker/study-cycle';
+import { listStudyLibrary, readStudyState } from '../../../../../worker/study-library';
 import { authorizePrivateCycleIntegration } from '../auth';
 
 export const runtime = 'edge';
@@ -26,7 +27,12 @@ export async function GET(request: Request) {
 
   try {
     await ensureStudyCycleSchema(workerEnv.DB);
-    return json(await readIntegrationStudy(workerEnv.DB, date));
+    const [study, library, studyState] = await Promise.all([
+      readIntegrationStudy(workerEnv.DB, date),
+      listStudyLibrary(workerEnv.DB, { limit: 6 }),
+      readStudyState(workerEnv.DB),
+    ]);
+    return json({ ...study, library, studyState });
   } catch (error) {
     if (error instanceof StudyCycleError) return json({ error: { code: error.code, message: error.message } }, { status: error.status });
     return json({ error: { code: 'INTERNAL_ERROR', message: 'The integration request could not be completed' } }, { status: 500 });

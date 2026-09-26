@@ -2,6 +2,7 @@
 
 import Image from 'next/image';
 import StudySchedule from './components/StudySchedule';
+import StudyLibrary from './components/StudyLibrary';
 import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { correctOptionLabel, dDay, getWeek, kstToday, quizItemSnapshot, quizItemVersion, shiftDate, splitLegacyQuestion, toLocalDate, weekLabel, type StudyOption } from './dashboard-utils';
@@ -801,6 +802,8 @@ export default function Home() {
             </div> : <div className="empty-state material-empty"><strong>이 날짜에 도착한 예약 학습 자료가 없어요.</strong><span>영어, 일본어, TOEIC 자료가 도착하면 여기에 모아 보여드려요.</span></div>}
           </div>
         </details>
+
+        <StudyLibrary canEdit={authState === 'authenticated'} onOpen={(date, materialId) => { setFocusedMaterialId(materialId); setFocusedQuizItemIndex(null); selectDate(date); }} />
 
         <section className="mistake-section" aria-labelledby="mistake-title">
           <header className="mistake-heading">

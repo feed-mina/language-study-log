@@ -45,6 +45,7 @@ export function scheduleReview(row: StudyCardRow, rating: ReviewRating, reviewed
 }
 
 export function publicStudyCard(row: StudyCardRow) {
+  const priority = reviewPriority(row);
   return {
     id: row.id,
     language: row.language,
@@ -58,15 +59,33 @@ export function publicStudyCard(row: StudyCardRow) {
     lapses: row.lapses,
     state: row.state,
     lastReview: row.last_review,
+    priorityGroup: priority.group,
+    priorityLabel: priority.label,
+    priorityScore: priority.score,
+    learningStage: priority.learningStage,
   };
 }
+
+export function reviewPriority(row: Pick<StudyCardRow, 'difficulty' | 'lapses' | 'state' | 'learning_steps'>) {
+  const weak = row.lapses > 0 || row.difficulty >= 5;
+  const learningStage = Math.max(0, Number(row.learning_steps || row.state || 0));
+  return {
+    group: weak ? 'weak' as const : 'stage' as const,
+    label: weak ? '약한 단어 우선' : `낮은 단계 ${learningStage + 1}`,
+    score: (weak ? 10_000 : 0) + row.lapses * 100 + Math.round(row.difficulty * 10) + Math.max(0, 100 - learningStage),
+    learningStage,
+  };
+}
+
+export const REVIEW_PRIORITY_ORDER = `CASE WHEN c.lapses>0 OR c.difficulty>=5 THEN 0 ELSE 1 END,
+  c.state ASC,c.learning_steps ASC,c.lapses DESC,c.difficulty DESC,c.due ASC,c.id ASC`;
 
 export async function listDueCards(env: WorkerEnv, language?: string, limit = 20): Promise<StudyCardRow[]> {
   const safeLimit = Math.max(1, Math.min(50, Math.trunc(limit)));
   const now = new Date().toISOString();
   const statement = language
-    ? env.DB.prepare('SELECT * FROM study_cards WHERE due <= ? AND language = ? ORDER BY due LIMIT ?').bind(now, language, safeLimit)
-    : env.DB.prepare('SELECT * FROM study_cards WHERE due <= ? ORDER BY due LIMIT ?').bind(now, safeLimit);
+    ? env.DB.prepare(`SELECT c.* FROM study_cards c WHERE c.due <= ? AND c.language = ? ORDER BY ${REVIEW_PRIORITY_ORDER} LIMIT ?`).bind(now, language, safeLimit)
+    : env.DB.prepare(`SELECT c.* FROM study_cards c WHERE c.due <= ? ORDER BY ${REVIEW_PRIORITY_ORDER} LIMIT ?`).bind(now, safeLimit);
   const result = await statement.all<StudyCardRow>();
   return result.results ?? [];
 }

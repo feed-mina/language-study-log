@@ -1,7 +1,7 @@
 import { validDate, shiftDay, parseStart, kstDate, dayEnd, type AgendaItem } from '../app/schedule-utils.ts';
 import { ensureScheduleSchema } from './schedule-schema.ts';
 import { executePlanCommand, isPlanCommand } from './study-cycle.ts';
-import { isReviewRating, publicStudyCard, scheduleReview } from './review.ts';
+import { isReviewRating, publicStudyCard, REVIEW_PRIORITY_ORDER, scheduleReview } from './review.ts';
 import type { StudyCardRow } from './types.ts';
 
 export class ScheduleError extends Error { status: number; constructor(message: string, status = 400) { super(message); this.status = status; } }
@@ -38,7 +38,7 @@ export async function readSchedule(db: D1Database, params: URLSearchParams, now 
     db.prepare(`SELECT s.id,s.session_date AS date,'카드 복습' AS title,'REVIEW' AS category,s.minutes,s.start_minute AS start,s.status,'review' AS type,NULL AS sourcePlanId,COUNT(sc.card_id) AS cardCount,COUNT(sc.reviewed_at) AS reviewedCount FROM review_sessions s LEFT JOIN review_session_cards sc ON sc.session_id=s.id WHERE s.session_date BETWEEN ? AND ? AND s.status<>'cancelled' GROUP BY s.id`).bind(from, to).all<AgendaItem>(),
     db.prepare("SELECT date(due,'+9 hours') AS date,COUNT(*) AS count FROM study_cards WHERE due < ? GROUP BY date(due,'+9 hours')").bind(new Date(dayEnd(to)).toISOString()).all<{ date: string; count: number }>(),
     db.prepare("SELECT daily_minutes AS dailyMinutes FROM study_schedule_settings WHERE id='owner'").first<{ dailyMinutes: number }>(),
-    db.prepare(`SELECT c.* FROM study_cards c WHERE c.due <= ? AND NOT EXISTS (SELECT 1 FROM review_session_cards sc WHERE sc.card_id=c.id AND sc.active=1) ORDER BY c.due,c.id LIMIT 50`).bind(now.toISOString()).all<StudyCardRow>(),
+    db.prepare(`SELECT c.* FROM study_cards c WHERE c.due <= ? AND NOT EXISTS (SELECT 1 FROM review_session_cards sc WHERE sc.card_id=c.id AND sc.active=1) ORDER BY ${REVIEW_PRIORITY_ORDER} LIMIT 50`).bind(now.toISOString()).all<StudyCardRow>(),
   ]);
   const items = [...plans.results, ...sessions.results];
   const today = kstDate(now);

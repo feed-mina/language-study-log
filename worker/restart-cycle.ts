@@ -45,7 +45,8 @@ export async function ensureRestartSchema(database: D1Database): Promise<void> {
     database.prepare(`CREATE TABLE IF NOT EXISTS study_archive_batches (
       id TEXT PRIMARY KEY, request_id TEXT NOT NULL, snapshot_token TEXT NOT NULL,
       backlog_count INTEGER NOT NULL, replaced_today_count INTEGER NOT NULL,
-      total_minutes INTEGER NOT NULL, reason TEXT NOT NULL, result_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL
+      total_minutes INTEGER NOT NULL, reason TEXT NOT NULL, result_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL,
+      restored_at TEXT, restore_request_id TEXT, restore_result_json TEXT NOT NULL DEFAULT '{}'
     )`),
     database.prepare('CREATE UNIQUE INDEX IF NOT EXISTS uq_study_archive_batches_request ON study_archive_batches(request_id)'),
     database.prepare(`CREATE TABLE IF NOT EXISTS study_archive_batch_items (
@@ -59,9 +60,15 @@ export async function ensureRestartSchema(database: D1Database): Promise<void> {
   const names = new Set((columns.results ?? []).map((column) => column.name));
   if (!names.has('cycle_id')) await database.prepare('ALTER TABLE study_plans ADD COLUMN cycle_id TEXT').run();
   if (!names.has('archive_batch_id')) await database.prepare('ALTER TABLE study_plans ADD COLUMN archive_batch_id TEXT').run();
+  const batchColumns = await database.prepare('PRAGMA table_info(study_archive_batches)').all<{ name: string }>();
+  const batchNames = new Set((batchColumns.results ?? []).map((column) => column.name));
+  if (!batchNames.has('restored_at')) await database.prepare('ALTER TABLE study_archive_batches ADD COLUMN restored_at TEXT').run();
+  if (!batchNames.has('restore_request_id')) await database.prepare('ALTER TABLE study_archive_batches ADD COLUMN restore_request_id TEXT').run();
+  if (!batchNames.has('restore_result_json')) await database.prepare("ALTER TABLE study_archive_batches ADD COLUMN restore_result_json TEXT NOT NULL DEFAULT '{}'").run();
   await database.batch([
     database.prepare('CREATE INDEX IF NOT EXISTS idx_study_plans_cycle ON study_plans(cycle_id)'),
     database.prepare('CREATE INDEX IF NOT EXISTS idx_study_plans_archive_batch ON study_plans(archive_batch_id)'),
+    database.prepare('CREATE UNIQUE INDEX IF NOT EXISTS uq_study_archive_batches_restore_request ON study_archive_batches(restore_request_id)'),
   ]);
 }
 
