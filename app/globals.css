@@ -570,3 +570,14 @@ body { background: var(--cream); font-family: Pretendard, -apple-system, BlinkMa
   .study-ring i { width: 23px; height: 23px; font-size: 9px; }
   .agenda-actions { padding-left: 0; }
 }
+
+.restart-panel { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 24px 0; padding: 18px 20px; border: 1px solid #b9d3c7; border-radius: 16px; background: #f0f7f3; }
+.restart-panel h2 { margin: 1px 0 4px; font-size: 20px; }
+.restart-panel p { margin: 0; color: var(--muted); font-size: 12px; }
+.restart-panel > button, .restart-preview button { flex: 0 0 auto; padding: 10px 12px; border: 0; border-radius: 9px; background: var(--green); color: #fff; font-size: 11px; font-weight: 800; }
+.restart-panel button:disabled { cursor: wait; opacity: .55; }
+.restart-preview { display: grid; gap: 4px; min-width: min(100%, 330px); color: var(--muted); font-size: 11px; }
+.restart-preview strong { color: var(--ink); font-size: 12px; }
+.restart-preview > div { display: flex; justify-content: flex-end; gap: 6px; margin-top: 5px; }
+.restart-preview button.subtle { border: 1px solid #b9d3c7; background: #fff; color: var(--green); }
+@media (max-width: 460px) { .restart-panel { align-items: stretch; flex-direction: column; padding: 16px; } }

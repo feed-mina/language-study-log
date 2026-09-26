@@ -5,6 +5,7 @@ import { ensureAutomationSchema, findAsset, insertAsset, listAssets, listContent
 import { isReviewRating, listDueCards, publicStudyCard, reviewCard } from './review';
 import { getTelegramStart, sendTelegramStudy, telegramTokenConfigured } from './telegram';
 import { isContentKind, isDate, kstDate, type ContentKind, type ContentRow, type WorkerEnv } from './types';
+import { StudyCycleError } from './study-cycle';
 
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 const ALLOWED_UPLOADS = new Set([
@@ -254,6 +255,7 @@ export async function handleAutomationApi(request: Request, env: WorkerEnv): Pro
     if (message === 'Study content not found') return errorResponse(404, 'CONTENT_NOT_FOUND', message);
     if (message === 'Study card not found') return errorResponse(404, 'CARD_NOT_FOUND', message);
     if (message.includes('Study card changed')) return errorResponse(409, 'REVIEW_CONFLICT', message);
+    if (error instanceof StudyCycleError) return errorResponse(error.status, error.code, error.message);
     if (message.includes('JSON') || message.includes('body is too large')) return errorResponse(400, 'INVALID_REQUEST', message);
     return errorResponse(500, 'INTERNAL_ERROR', 'The request could not be completed');
   }

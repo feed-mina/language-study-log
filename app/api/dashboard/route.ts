@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 
 import { isAuthorizedDashboardMutation } from './auth';
 import { ensureQuizMistakesSchema, isQuizLabel, isQuizRequestId, listQuizMistakes, QuizMistakeError, recordQuizAnswer, recordSavedQuizAnswer } from '../../../worker/quiz-mistakes';
-import { ensureStudyCycleSchema, executePlanCommand, StudyCycleError, summarizeRecovery, type PlanCommand, type StudyPlanView } from '../../../worker/study-cycle';
+import { assertPlanFitsDailyLimit, ensureStudyCycleSchema, executePlanCommand, StudyCycleError, summarizeRecovery, type PlanCommand, type StudyPlanView } from '../../../worker/study-cycle';
 
 export const runtime = 'edge';
 
@@ -168,11 +168,14 @@ export async function POST(request: Request) {
       .bind(crypto.randomUUID(), body.studyDate, text(body.part, 12) || 'OTHER', text(body.title, 80), minutes(body.minutes), text(body.score, 30), text(body.note, 300), text(body.confusedItems, 300), now).run();
   } else if (body.kind === 'plan') {
     if (!validDate(body.planDate) || !text(body.title, 80)) return Response.json({ error: 'invalid input' }, { status: 400 });
+    const planMinutes = minutes(body.minutes);
+    try { await assertPlanFitsDailyLimit(database, body.planDate, planMinutes); }
+    catch (error) { if (error instanceof StudyCycleError) return Response.json({ error: error.message, code: error.code }, { status: error.status }); throw error; }
     const planId = crypto.randomUUID();
     await database.prepare(`INSERT INTO study_plans
       (id, plan_date, category, title, detail, minutes, completed, source_plan_id, status, root_plan_id, created_at, updated_at, archived_at, archive_reason)
       VALUES (?, ?, ?, ?, ?, ?, 0, NULL, 'planned', ?, ?, ?, NULL, '')`)
-      .bind(planId, body.planDate, text(body.category, 12), text(body.title, 80), text(body.detail, 120), minutes(body.minutes), planId, now, now).run();
+      .bind(planId, body.planDate, text(body.category, 12), text(body.title, 80), text(body.detail, 120), planMinutes, planId, now, now).run();
   } else if (body.kind === 'goal') {
     const targetScore = scoreNumber(body.targetScore);
     if (targetScore === null || !validDate(body.examDate)) return Response.json({ error: 'invalid goal' }, { status: 400 });

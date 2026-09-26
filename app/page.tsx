@@ -20,6 +20,7 @@ type ReviewNote = { title: string; studyDate: string; note: string; confusedItem
 type QuizMistake = { id: string; latestRequestId: string; materialId: string; materialDate: string; materialTitle: string; itemIndex: number; itemHash: string; prompt: string; options: StudyOption[]; selectedLabel: StudyOption['label']; correctLabel: StudyOption['label']; explanation: string; attempts: number; firstWrongAt: string; lastWrongAt: string };
 type QuizAnswerState = { selectedLabel: StudyOption['label']; saving: boolean; saved: boolean; failed: boolean; correct: boolean | null; requestId: string; attemptedAt: string };
 type QuizSaveResult = { correct: boolean; resolved: boolean; itemHash: string } | 'stale' | null;
+type RestartPreview = { restartDate: string; backlogCount: number; backlogMinutes: number; todayReplaceCount: number; todayReplaceMinutes: number; archiveCount: number; snapshotToken: string; dailyLimitMinutes: 40; preservesMaterials: true };
 type DashboardPayload = { plans: StudyPlan[]; overduePlans: StudyPlan[]; logs: StudyLog[]; completedDates: string[]; legacyLogsCount: number; goal: Goal | null; latestScore: ToeicScore | null; reviewNotes: ReviewNote[]; quizMistakes: QuizMistake[] };
 type AuthState = 'checking' | 'guest' | 'authenticated';
 type Editor = 'external-log' | 'plan' | 'goal' | null;
@@ -161,6 +162,8 @@ export default function Home() {
   const [mistakeAnswers, setMistakeAnswers] = useState<Record<string, QuizAnswerState>>({});
   const [editor, setEditor] = useState<Editor>(null);
   const [completionTarget, setCompletionTarget] = useState<CompletionTarget | null>(null);
+  const [restartPreview, setRestartPreview] = useState<RestartPreview | null>(null);
+  const [restartBusy, setRestartBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
@@ -606,6 +609,36 @@ export default function Home() {
     else if (!handleUnauthorized(response)) setNotice('학습 시작 상태를 저장하지 못했어요.');
   }
 
+  async function previewRestart() {
+    if (!requireAdmin()) return;
+    setRestartBusy(true);
+    try {
+      const response = await fetch(`/api/dashboard/restart?date=${encodeURIComponent(today)}`, { cache: 'no-store' });
+      if (!response.ok) { if (handleUnauthorized(response)) return; throw new Error(await responseError(response, '재시작 미리보기를 불러오지 못했어요.')); }
+      setRestartPreview(await response.json() as RestartPreview);
+      setNotice('보관 범위와 새 40분 계획을 확인해 주세요. 아직 변경된 데이터는 없습니다.');
+    } catch (error) { setNotice(error instanceof Error ? error.message : '재시작 미리보기를 불러오지 못했어요.'); }
+    finally { setRestartBusy(false); }
+  }
+
+  async function confirmRestart() {
+    if (!restartPreview || !requireAdmin()) return;
+    const confirmed = window.confirm(`밀린 ${restartPreview.backlogCount}건과 오늘 기존 ${restartPreview.todayReplaceCount}건을 삭제 없이 보관하고, 영어 20분·일본어 20분 새 회차를 시작합니다. TOEIC은 일시정지합니다.`);
+    if (!confirmed) return;
+    setRestartBusy(true);
+    try {
+      const response = await fetch('/api/dashboard/restart', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request_id: `restart:${today}:${crypto.randomUUID()}`, restart_date: today, expected_backlog_count: restartPreview.backlogCount, snapshot_token: restartPreview.snapshotToken, confirmed: true }),
+      });
+      if (!response.ok) { if (handleUnauthorized(response)) return; throw new Error(await responseError(response, '재시작을 적용하지 못했어요.')); }
+      setRestartPreview(null);
+      setNotice('기존 계획을 보관하고 영어·일본어 새 회차를 시작했어요. TOEIC은 일시정지됐고 하루 계획은 40분입니다.');
+      await loadDashboard(true);
+    } catch (error) { setNotice(error instanceof Error ? error.message : '재시작을 적용하지 못했어요.'); }
+    finally { setRestartBusy(false); }
+  }
+
   async function deleteItem(id: string, kind: 'log' | 'plan') {
     if (!requireAdmin()) return;
     const response = await fetch(`/api/dashboard?id=${encodeURIComponent(id)}&kind=${kind}`, { method: 'DELETE' });
@@ -642,6 +675,13 @@ export default function Home() {
             ); })}
           </div>
         </details>
+
+        <section className="restart-panel" aria-labelledby="restart-title">
+          <div><p className="mini-label">SAFE RESTART</p><h2 id="restart-title">영어·일본어 처음부터 다시 시작</h2><p>기존 계획과 자료를 삭제하지 않고 보관한 뒤, TOEIC을 쉬고 하루 40분으로 다시 시작합니다.</p></div>
+          {!restartPreview
+            ? <button disabled={restartBusy || saving} onClick={() => void previewRestart()}>{restartBusy ? '확인 중…' : '변경 전 미리보기'}</button>
+            : <div className="restart-preview"><strong>밀린 {restartPreview.backlogCount}건 · {restartPreview.backlogMinutes}분</strong><span>오늘 기존 {restartPreview.todayReplaceCount}건도 새 회차로 교체</span><span>새 계획: 영어 20분 + 일본어 20분 · TOEIC 일시정지</span><span>기존 자료와 기록 유지</span><div><button className="subtle" disabled={restartBusy} onClick={() => setRestartPreview(null)}>취소</button><button disabled={restartBusy} onClick={() => void confirmRestart()}>{restartBusy ? '적용 중…' : '확인하고 재시작'}</button></div></div>}
+        </section>
 
         <StudySchedule date={selectedDate} today={today} revision={scheduleRevision} canEdit={authState === 'authenticated' && !loading} onDate={selectDate} onChanged={() => void loadDashboard(true)} onAdd={() => openEditor('plan')} onComplete={id => { const plan = plans.find(p => p.id === id); if (plan) openCompletion({ type: 'plan', id: plan.id, title: plan.title, part: plan.category, minutes: plan.minutes, date: plan.planDate }); }} onUndo={id => { const plan = plans.find(p => p.id === id); if (plan) void undoPlan(plan); }} onOpen={id => { const plan = plans.find(p => p.id === id); if (plan) openPlanMaterial(plan); }} />
 

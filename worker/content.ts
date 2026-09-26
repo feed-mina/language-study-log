@@ -10,6 +10,8 @@ import {
 } from './db';
 import { sendTelegramStudy, telegramTokenConfigured, type TelegramAudio } from './telegram';
 import { extractJson, kstDate, kindFromCron, type ContentKind, type ContentRow, type StudyPayload, type WorkerEnv } from './types';
+import { trackAllowsPlan } from './restart-cycle.ts';
+import { StudyCycleError } from './study-cycle.ts';
 
 export const CONTENT_MODEL = '@cf/zai-org/glm-4.7-flash';
 export const ENGLISH_TTS_MODEL = '@cf/deepgram/aura-2-en';
@@ -29,6 +31,12 @@ function systemPrompt(): string {
 export async function generateContent(env: WorkerEnv, date: string, kind: ContentKind): Promise<ContentRow> {
   const existing = await findContent(env, date, kind);
   if (existing) return existing;
+
+  const category = kind === 'english' ? 'ENGLISH' : kind === 'japanese' ? 'JAPANESE' : 'TOEIC';
+  const planMinutes = kind === 'toeic' ? 45 : 20;
+  if (!(await trackAllowsPlan(env.DB, category, date, planMinutes))) {
+    throw new StudyCycleError(409, 'TRACK_PAUSED', `${category} track is paused`);
+  }
 
   const response = await env.AI.run(CONTENT_MODEL, {
     messages: [
@@ -190,6 +198,12 @@ export async function runScheduled(controller: ScheduledController, env: WorkerE
     return;
   }
   const date = kstDate(controller.scheduledTime);
+  const category = kind === 'english' ? 'ENGLISH' : kind === 'japanese' ? 'JAPANESE' : 'TOEIC';
+  const planMinutes = kind === 'toeic' ? 45 : 20;
+  if (!(await trackAllowsPlan(env.DB, category, date, planMinutes))) {
+    console.log(JSON.stringify({ event: 'cron_skipped_paused_track', kind, date }));
+    return;
+  }
   const runId = await startAutomationRun(env, kind, new Date(controller.scheduledTime).toISOString());
   try {
     const result = await generateAndDeliver(env, date, kind, true);

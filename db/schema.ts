@@ -16,10 +16,35 @@ export const studyPlans = sqliteTable('study_plans', {
   updatedAt: text('updated_at').notNull().default(''),
   archivedAt: text('archived_at'),
   archiveReason: text('archive_reason').notNull().default(''),
+  cycleId: text('cycle_id'),
+  archiveBatchId: text('archive_batch_id'),
 }, (table) => [
   index('idx_study_plans_date').on(table.planDate),
   index('idx_study_plans_status_date').on(table.status, table.planDate),
+  index('idx_study_plans_cycle').on(table.cycleId),
+  index('idx_study_plans_archive_batch').on(table.archiveBatchId),
 ]);
+
+export const studyCycles = sqliteTable('study_cycles', {
+  id: text('id').primaryKey(), language: text('language').notNull(), curriculumVersion: text('curriculum_version').notNull(),
+  startStep: integer('start_step').notNull().default(1), state: text('state').notNull().default('active'),
+  dailyMinutes: integer('daily_minutes').notNull(), startedOn: text('started_on').notNull(), createdAt: text('created_at').notNull(), updatedAt: text('updated_at').notNull(),
+}, (table) => [index('idx_study_cycles_language_state').on(table.language, table.state)]);
+
+export const studyTrackSettings = sqliteTable('study_track_settings', {
+  language: text('language').primaryKey(), state: text('state').notNull().default('active'), dailyMinutes: integer('daily_minutes').notNull(),
+  curriculumVersion: text('curriculum_version').notNull(), updatedAt: text('updated_at').notNull(),
+});
+
+export const studyArchiveBatches = sqliteTable('study_archive_batches', {
+  id: text('id').primaryKey(), requestId: text('request_id').notNull(), snapshotToken: text('snapshot_token').notNull(),
+  backlogCount: integer('backlog_count').notNull(), replacedTodayCount: integer('replaced_today_count').notNull(), totalMinutes: integer('total_minutes').notNull(),
+  reason: text('reason').notNull(), resultJson: text('result_json').notNull().default('{}'), createdAt: text('created_at').notNull(),
+}, (table) => [uniqueIndex('uq_study_archive_batches_request').on(table.requestId)]);
+
+export const studyArchiveBatchItems = sqliteTable('study_archive_batch_items', {
+  batchId: text('batch_id').notNull(), planId: text('plan_id').notNull(), itemScope: text('item_scope').notNull(),
+}, (table) => [uniqueIndex('uq_study_archive_batch_items').on(table.batchId, table.planId)]);
 
 export const studyPlanEvents = sqliteTable('study_plan_events', {
   id: text('id').primaryKey(),

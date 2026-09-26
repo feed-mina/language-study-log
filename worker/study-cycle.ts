@@ -184,6 +184,21 @@ export function materialOpenPath(materialId: string | null | undefined, material
   return `/?date=${encodeURIComponent(materialDate)}&material=${encodeURIComponent(materialId)}`;
 }
 
+export const ACTIVE_DAILY_LIMIT_MINUTES = 40;
+
+export function validateActiveDailyMinutes(minutes: number[]): void {
+  const total = minutes.reduce((sum, value) => sum + value, 0);
+  if (minutes.some((value) => !Number.isInteger(value) || value < 0) || total > ACTIVE_DAILY_LIMIT_MINUTES) {
+    throw new StudyCycleError(409, 'DAILY_LIMIT_EXCEEDED', `active study plans may not exceed ${ACTIVE_DAILY_LIMIT_MINUTES} minutes per day`);
+  }
+}
+
+export async function assertPlanFitsDailyLimit(database: D1Database, date: string, minutes: number): Promise<void> {
+  const current = await database.prepare("SELECT COALESCE(SUM(minutes),0) AS minutes FROM study_plans WHERE plan_date=? AND status='planned'")
+    .bind(date).first<{ minutes: number }>();
+  validateActiveDailyMinutes([Number(current?.minutes ?? 0), minutes]);
+}
+
 function materialLink(row: { material_id?: string | null; material_date?: string | null }): { materialId?: string; openPath?: string } {
   const openPath = materialOpenPath(row.material_id, row.material_date);
   return row.material_id && openPath ? { materialId: row.material_id, openPath } : {};
@@ -451,6 +466,8 @@ export async function executePlanCommand(
   if (input.command === 'reschedule' && input.targetDate === plan.planDate) {
     throw new StudyCycleError(409, 'INVALID_PLAN_TRANSITION', 'target_date must differ from the current plan date');
   }
+  if (input.command === 'reschedule') await assertPlanFitsDailyLimit(database, input.targetDate!, plan.minutes);
+  if (input.command === 'undo-complete' || input.command === 'restore') await assertPlanFitsDailyLimit(database, plan.planDate, plan.minutes);
 
   const toStatus: PlanStatus = input.command === 'complete'
     ? 'completed'
