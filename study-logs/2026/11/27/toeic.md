@@ -192,7 +192,7 @@ D. were
 
 **문제**
 
-All customer inquiries should be _____ within two business days.
+All customer inquiries should be _____ to within two business days.
 
 A. responding
 
@@ -280,7 +280,7 @@ in response to는 ‘~에 대응하여’라는 고정 표현이므로 to가 정
       "explanation": "주어의 핵심은 단수 대명사 Each이므로 단수 동사 is가 정답입니다. offices가 복수여도 of 이하의 명사는 동사의 수를 결정하지 않습니다. are와 were는 복수 주어에 맞고, have는 be responsible for 구조를 만들 수 없습니다."
     },
     {
-      "prompt": "All customer inquiries should be _____ within two business days.\nA. responding\nB. responded\nC. respond\nD. response",
+      "prompt": "All customer inquiries should be _____ to within two business days.\nA. responding\nB. responded\nC. respond\nD. response",
       "answer": "정답: B. responded — 완성 표현: should be responded to within two business days",
       "explanation": "문의가 ‘응답을 받는’ 대상이므로 조동사 should 뒤에 수동태 be responded가 필요합니다. 다만 respond는 자동사이므로 목적 대상 앞에 전치사 to가 필요하며, 완전한 표현은 should be responded to입니다. responding은 현재분사, respond는 원형, response는 명사입니다."
     },
